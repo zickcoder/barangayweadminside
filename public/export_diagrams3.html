@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Barangay 178 ECS — Capstone Diagrams Set 3 (Updated)</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', -apple-system, Roboto, sans-serif; background: #eef2f7; color: #1a202c; padding: 28px; }
+    .header {
+      max-width: 1400px; margin: 0 auto 28px;
+      background: #fff; padding: 22px 30px; border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .header h1 { font-size: 18px; color: #0f172a; font-weight: 700; }
+    .header p  { font-size: 12px; color: #64748b; margin-top: 4px; }
+    .btn-all { background: #1d4ed8; color: #fff; border: none; padding: 11px 22px; font-weight: 700; font-size: 13px; border-radius: 8px; cursor: pointer; }
+    .btn-all:hover { background: #1e40af; }
+    .diagram-card { max-width: 1400px; margin: 0 auto 32px; background: #fff; border-radius: 12px; box-shadow: 0 4px 18px rgba(0,0,0,0.07); border: 1px solid #e2e8f0; overflow: hidden; }
+    .diagram-header { padding: 13px 24px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+    .diagram-header h2 { font-size: 14px; font-weight: 700; color: #1e293b; }
+    .tag { font-size: 10px; padding: 3px 8px; border-radius: 4px; font-weight: 700; margin-right: 8px; }
+    .tag-arch  { background: #dbeafe; color: #1d4ed8; }
+    .tag-new   { background: #dcfce7; color: #15803d; }
+    .tag-flow  { background: #fef9c3; color: #a16207; }
+    .tag-sec   { background: #fce7f3; color: #be185d; }
+    .tag-ops   { background: #ede9fe; color: #6d28d9; }
+    .btn-dl { background: #0f172a; color: #fff; border: none; padding: 7px 14px; font-size: 11px; font-weight: 700; border-radius: 6px; cursor: pointer; }
+    .btn-dl:hover { background: #334155; }
+    .diagram-body { padding: 36px; display: flex; justify-content: center; align-items: flex-start; background: #fff; min-height: 260px; }
+    .mermaid { width: 100%; display: flex; justify-content: center; }
+    .mermaid svg { max-width: 100% !important; height: auto !important; }
+    .label-new { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: #dcfce7; color: #15803d; font-weight: 700; margin-left: 8px; vertical-align: middle; }
+    .label-updated { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: #fef3c7; color: #92400e; font-weight: 700; margin-left: 8px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Barangay 178 ECS — Capstone Diagrams Set 3 (With CIM, Login Pages & Emergency Call Intake)</h1>
+    <p>Updated with: Communication Integration Module · Emergency Call Intake Subsystem · Admin & Resident Login/Register · Emergency Hotlines Display</p>
+  </div>
+  <button class="btn-all" onclick="downloadAll()">⬇ Download All 8 Diagrams (JPG)</button>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 1. SYSTEM ARCHITECTURE (UPDATED) -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div>
+      <span class="tag tag-arch">Architecture</span>
+      <h2 style="display:inline">1. System Architecture & Microservices Diagram <span class="label-updated">UPDATED</span></h2>
+    </div>
+    <button class="btn-dl" onclick="downloadJPG('d1','01_System_Architecture.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d1">
+    <pre class="mermaid">
+graph TB
+    subgraph Auth_Layer ["🔐 Authentication Layer (Supabase Auth)"]
+        ADMIN_AUTH["Admin Login / Register\n(Web Portal Auth Page)"]
+        APP_AUTH["Resident Login / Register\n(Mobile App Auth Screen)"]
+    end
+
+    subgraph External_Sources ["External Emergency Subsystems"]
+        PCP["🚔 PCP Barangay 178"]
+        BFP["🚒 BFP Fire Services"]
+        MED["🏥 Medical / BHS Unit"]
+        DRRM["🌀 DRRM Office"]
+        CALL_INTAKE["📞 Emergency Call Intake\n(Custom Hotline Subsystem)"]
+    end
+
+    subgraph CIM ["📡  COMMUNICATION INTEGRATION MODULE\n  —  Central Translator & Bridge  —\n  Makes Everything Talk to Each Other  "]
+        INC_EP["Incident Intake\nREST Endpoint"]
+        HOT_EP["Hotline Intake\nREST Endpoint"]
+        AI_BRIDGE["AI Summarization\nBridge (Gemini)"]
+        RT_BRIDGE["Realtime Broadcast\nBridge (WebSocket)"]
+        AUTH_GATE["Auth Gateway\n(JWT + RLS)"]
+    end
+
+    subgraph Backend ["☁️ Supabase Backend (BaaS)"]
+        PG[("🗄️ PostgreSQL\nDatabase")]
+        RT["⚡ Realtime Engine\n(WebSocket CDC)"]
+        SAUTH["🔒 Auth Engine"]
+    end
+
+    subgraph Admin_Portal ["💻 Admin Web Portal (React + Vite + TypeScript)"]
+        PORT_DASH["Dashboard"]
+        PORT_INC["Incoming Incidents Queue"]
+        PORT_BC["Broadcast Alert Form"]
+        PORT_HOT["Hotline Manager\n(CRUD + Call Intake Entries)"]
+        PORT_LOGS["Communication Logs"]
+    end
+
+    subgraph Resident_App ["📱 Resident Mobile App (Android / Kotlin)"]
+        APP_ALERTS["Alert Viewer\n(Realtime Push)"]
+        APP_HOTLINES["Emergency Hotlines Display\n(incl. Call Intake Hotlines)"]
+        APP_SETTINGS["App Settings"]
+    end
+
+    ADMIN_AUTH --> AUTH_GATE --> Admin_Portal
+    APP_AUTH   --> AUTH_GATE --> Resident_App
+    SAUTH --> AUTH_GATE
+
+    PCP & BFP & MED & DRRM --> INC_EP --> PG
+    CALL_INTAKE --> HOT_EP --> PG
+
+    Admin_Portal --> AI_BRIDGE --> PG
+    PG --> RT --> RT_BRIDGE --> APP_ALERTS
+    PG --> PORT_HOT
+    PORT_HOT --> PG --> APP_HOTLINES
+    </pre>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 2. DATA FLOW DIAGRAM (UPDATED) -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div>
+      <span class="tag tag-arch">DFD</span>
+      <h2 style="display:inline">2. Data Flow Diagram — Level 1 <span class="label-updated">UPDATED</span></h2>
+    </div>
+    <button class="btn-dl" onclick="downloadJPG('d2','02_Data_Flow_Diagram.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d2">
+    <pre class="mermaid">
+graph TD
+    E1["👤 Resident User"]
+    E2["👮 Barangay Admin"]
+    E3["🚑 External Emergency Agency"]
+    E4["📞 Emergency Call Intake System"]
+
+    P0["0.0 Authentication Process\n(Login / Register via Supabase Auth)"]
+    P1["1.0 Incident Ingestion\n(via CIM REST Endpoint)"]
+    P2["2.0 AI Alert Summarization\n(Gemini 3.5 Flash via CIM Bridge)"]
+    P3["3.0 Realtime Alert Broadcasting\n(via CIM WebSocket Bridge)"]
+    P4["4.0 Hotline Management\n(Admin CRUD Interface)"]
+    P5["5.0 Emergency Call Intake\n(Custom Hotline via CIM)"]
+
+    D1[("D1: incoming_incidents")]
+    D2[("D2: alerts")]
+    D3[("D3: emergency_hotlines")]
+    D4[("D4: app_settings")]
+    D5[("D5: auth.users")]
+
+    E2 -->|Enter Login Credentials| P0
+    E1 -->|Login or Register| P0
+    P0 <-->|Verify / Create Account| D5
+    D5 -->|Auth Token Issued| E2
+    D5 -->|Auth Token Issued| E1
+
+    E3 -->|Submit Incident Report| P1
+    P1 -->|Save Incident - Status Pending| D1
+    E2 -->|Review Incidents| D1
+    D1 -->|Read Incident Description| P2
+    P2 -->|AI-Generated Alert Text| E2
+    E2 -->|Confirm & Broadcast| P3
+    P3 -->|Write Alert Record| D2
+    P3 -->|Update Status to Broadcasted| D1
+    P3 -->|Realtime WebSocket Push| E1
+
+    E2 -->|Add Edit Delete Hotlines| P4
+    P4 -->|Write Hotline Data| D3
+    D3 -->|Fetch Hotline List| E1
+
+    E4 -->|Submit Custom Hotline Entry| P5
+    P5 -->|Insert into Hotlines Table| D3
+
+    D4 -->|App Config and Prefs| E1
+    </pre>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 3. INTEGRATION DIAGRAM — CIM AS CENTER (KEY DIAGRAM, UPDATED) -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div>
+      <span class="tag tag-arch">Integration</span>
+      <h2 style="display:inline">3. System Integration Diagram — Communication Integration Module (CIM) <span class="label-updated">UPDATED</span></h2>
+    </div>
+    <button class="btn-dl" onclick="downloadJPG('d3','03_Integration_Diagram.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d3">
+    <pre class="mermaid">
+graph LR
+    subgraph Auth_Systems ["🔐 Auth Systems"]
+        ADMIN_LOGIN["Admin Login\nRegister Page"]
+        APP_LOGIN["Resident Login\nRegister Screen"]
+        SUPA_AUTH["Supabase Auth\nEngine"]
+    end
+
+    subgraph External ["⚠️ External Emergency Sources"]
+        PCP["Police\nBrgy 178"]
+        BFP["BFP Fire\nServices"]
+        MED["Medical\nBHS Unit"]
+        DRRM["DRRM\nOffice"]
+        INTAKE["📞 Emergency\nCall Intake\nSubsystem"]
+    end
+
+    subgraph CIM ["📡  C O M M U N I C A T I O N   I N T E G R A T I O N   M O D U L E\n         — Central Translator & Bridge —\n     Makes Every Component Talk to Each Other"]
+        CIM_AUTH["Auth Gateway\nJWT Validation + RLS"]
+        CIM_INC["Incident Intake\nNormalize + Validate"]
+        CIM_HOT["Hotline Intake\nValidate + Store"]
+        CIM_AI["Gemini AI\nSummarization Bridge"]
+        CIM_BC["Alert Broadcast\nGateway"]
+        CIM_RT["Realtime\nWebSocket Relay"]
+    end
+
+    subgraph Database ["🗄️ Supabase PostgreSQL Database"]
+        T_INC[("incoming\nincidents")]
+        T_ALE[("alerts")]
+        T_HOT[("emergency\nhotlines")]
+        T_SET[("app\nsettings")]
+        T_USR[("auth\nusers")]
+    end
+
+    subgraph AdminPortal ["💻 Admin Web Portal"]
+        A_DASH["Dashboard"]
+        A_INC["Incident Queue"]
+        A_BC["Broadcast Form"]
+        A_HOT["Hotline Manager"]
+        A_LOGS["Comm Logs"]
+    end
+
+    subgraph MobileApp ["📱 Resident Mobile App"]
+        M_AUTH["Login Screen"]
+        M_ALERT["Alert Viewer"]
+        M_HOT["Hotlines Display\n(incl. Call Intake)"]
+        M_SET["Settings"]
+    end
+
+    ADMIN_LOGIN --> CIM_AUTH
+    APP_LOGIN   --> CIM_AUTH
+    SUPA_AUTH   --> CIM_AUTH
+    CIM_AUTH --> T_USR
+    CIM_AUTH --> AdminPortal
+    CIM_AUTH --> M_AUTH
+
+    PCP & BFP & MED & DRRM --> CIM_INC --> T_INC
+    INTAKE --> CIM_HOT --> T_HOT
+
+    T_INC --> A_INC --> CIM_AI --> A_BC --> CIM_BC --> T_ALE
+    T_ALE --> CIM_RT --> M_ALERT
+
+    A_HOT --> T_HOT --> M_HOT
+
+    T_SET --> M_SET
+    T_INC & T_ALE --> A_LOGS
+    A_DASH --> T_INC & T_ALE & T_HOT
+    </pre>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 4. COMMUNICATION PATTERN (UPDATED) -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div>
+      <span class="tag tag-arch">Pattern</span>
+      <h2 style="display:inline">4. Communication Pattern — End-to-End Message Flow <span class="label-updated">UPDATED</span></h2>
+    </div>
+    <button class="btn-dl" onclick="downloadJPG('d4','04_Communication_Pattern.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d4">
+    <pre class="mermaid">
+graph TD
+    subgraph Auth ["🔐 Authentication (Login / Register)"]
+        ADMIN_LOGIN["Admin: Login or Register\nWeb Portal Auth Page"]
+        APP_LOGIN["Resident: Login or Register\nMobile App Auth Screen"]
+        AUTH_ENGINE["Supabase Auth Engine\nJWT Tokens + RLS"]
+    end
+
+    subgraph External ["External Systems"]
+        AGY["🚑 Emergency Agency\nPolice / BFP / Medical"]
+        CALL_SYS["📞 Emergency Call Intake\nCustom Hotline Subsystem"]
+    end
+
+    subgraph CIM ["📡 Communication Integration Module — Central Translator & Bridge"]
+        INC_CH["Incident Channel\nHTTP POST Normalized"]
+        HOT_CH["Hotline Intake Channel\nHTTP POST Validated"]
+        AI_CH["AI Processing Channel\nGemini 3.5 Flash"]
+        BC_CH["Broadcast Channel\nAlert Publisher"]
+        RT_CH["Realtime Channel\nWebSocket Push"]
+    end
+
+    subgraph DB ["🗄️ Supabase PostgreSQL"]
+        DB_INC[("incoming_incidents")]
+        DB_ALE[("alerts")]
+        DB_HOT[("emergency_hotlines")]
+    end
+
+    subgraph AdminPortal ["💻 Admin Web Portal"]
+        VIEW_INC["Review Incident\nPending → Seen"]
+        GEN_AI["Generate AI Alert"]
+        SEND_BC["Send Broadcast"]
+        HOT_MGMT["Manage Hotlines\n+ View Call Intake Entries"]
+    end
+
+    subgraph ResidentApp ["📱 Resident Mobile App"]
+        RECV_ALERT["🔔 Receive Emergency Alert"]
+        VIEW_HOT["📞 View Emergency Hotlines\nincluding Call Intake Hotlines"]
+    end
+
+    ADMIN_LOGIN --> AUTH_ENGINE --> AdminPortal
+    APP_LOGIN   --> AUTH_ENGINE --> ResidentApp
+
+    AGY     --> INC_CH --> DB_INC --> VIEW_INC
+    CALL_SYS --> HOT_CH --> DB_HOT --> HOT_MGMT
+
+    VIEW_INC --> GEN_AI --> AI_CH --> SEND_BC
+    SEND_BC --> BC_CH --> DB_ALE --> RT_CH --> RECV_ALERT
+
+    HOT_MGMT --> DB_HOT --> VIEW_HOT
+    </pre>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 5. USE CASE DIAGRAM (UPDATED) -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div>
+      <span class="tag tag-arch">Use Cases</span>
+      <h2 style="display:inline">5. System Use Case Diagram <span class="label-updated">UPDATED</span></h2>
+    </div>
+    <button class="btn-dl" onclick="downloadJPG('d5','05_Use_Case_Diagram.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d5">
+    <pre class="mermaid">
+graph LR
+    subgraph Actors ["System Actors"]
+        ADMIN(("👮\nBarangay\nAdmin"))
+        RESIDENT(("👤\nResident\nUser"))
+        AGENCY(("🚑\nEmergency\nAgency"))
+        CALL_SYS(("📞\nCall Intake\nSubsystem"))
+    end
+
+    subgraph Admin_UC ["Admin Portal Use Cases"]
+        UA1["Login to Admin Portal"]
+        UA2["Register Admin Account"]
+        UA3["View Incoming Incidents Queue"]
+        UA4["Mark Incident as Seen"]
+        UA5["Generate AI Alert Summary"]
+        UA6["Broadcast Emergency Alert"]
+        UA7["View Communication Logs"]
+        UA8["Manage Emergency Hotlines (CRUD)"]
+        UA9["View Call Intake Hotline Entries"]
+        UA10["Manage App Settings"]
+        UA11["View Broadcast History"]
+    end
+
+    subgraph Resident_UC ["Resident App Use Cases"]
+        UR1["Login or Register (Resident)"]
+        UR2["Receive Realtime Alert Notification"]
+        UR3["View Alert Details"]
+        UR4["View Emergency Hotlines Display"]
+        UR5["Tap to Call Emergency Hotline"]
+        UR6["View App Settings"]
+    end
+
+    subgraph System_UC ["External System Use Cases"]
+        US1["Submit Incident Report"]
+        US2["Submit Custom Hotline via Call Intake"]
+    end
+
+    ADMIN  --> UA1 & UA2 & UA3 & UA4 & UA5 & UA6 & UA7 & UA8 & UA9 & UA10 & UA11
+    RESIDENT --> UR1 & UR2 & UR3 & UR4 & UR5 & UR6
+    AGENCY   --> US1
+    CALL_SYS --> US2
+    </pre>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 6. API GATEWAY (UPDATED) -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div>
+      <span class="tag tag-sec">Security</span>
+      <h2 style="display:inline">6. API Gateway — CIM Security & Routing Layer <span class="label-updated">UPDATED</span></h2>
+    </div>
+    <button class="btn-dl" onclick="downloadJPG('d6','06_API_Gateway.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d6">
+    <pre class="mermaid">
+graph LR
+    subgraph Clients ["Client Callers"]
+        CL1["💻 Admin Web Portal"]
+        CL2["📱 Resident Mobile App"]
+        CL3["🚑 External Agency System"]
+        CL4["📞 Emergency Call Intake\nSubsystem"]
+    end
+
+    subgraph GW ["📡 CIM — API Gateway Layer\n(Communication Integration Module)"]
+        SEC["🛡️ Security Pipeline\nAPI Key → CORS → JWT → RLS"]
+        AUTH_EP["Auth Endpoints\nPOST /auth/v1/signup\nPOST /auth/v1/token\nPOST /auth/v1/logout"]
+        INC_EP["Incident Intake\nPOST /api/incoming-incidents\n(Normalize & Save)"]
+        HOT_EP["Hotline Intake\nPOST /api/emergency-call-intake\n(Validate & Store)"]
+        REST_EP["Supabase REST API\nGET POST PATCH DELETE\n/rest/v1/{table}"]
+        RT_EP["Realtime WebSocket\n/realtime/v1/websocket\n(CDC Subscription)"]
+    end
+
+    subgraph DB ["PostgreSQL Tables"]
+        T1["incoming_incidents"]
+        T2["alerts"]
+        T3["emergency_hotlines"]
+        T4["app_settings"]
+        T5["auth.users"]
+    end
+
+    CL1 & CL2 --> SEC
+    CL3 --> INC_EP --> SEC
+    CL4 --> HOT_EP --> SEC
+
+    SEC --> AUTH_EP & REST_EP & RT_EP
+
+    AUTH_EP --> T5
+    INC_EP  --> T1
+    HOT_EP  --> T3
+    REST_EP --> T1 & T2 & T3 & T4
+    RT_EP   --> T2 & T1
+    </pre>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 7. SEQUENCE DIAGRAM (UPDATED) -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div>
+      <span class="tag tag-ops">Interaction</span>
+      <h2 style="display:inline">7. Sequence Diagram — Full System Lifecycle (Login → Incident → Broadcast → Receive) <span class="label-updated">UPDATED</span></h2>
+    </div>
+    <button class="btn-dl" onclick="downloadJPG('d7','07_Sequence_Diagram.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d7">
+    <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    actor Agency as Emergency Agency
+    actor CallSys as Call Intake System
+    participant CIM as CIM (Integration Bridge)
+    participant AUTH as Supabase Auth
+    participant DB as PostgreSQL DB
+    participant RT as Realtime Engine
+    actor Admin as Admin Web Portal
+    actor Resident as Resident Mobile App
+
+    Note over Admin,AUTH: Phase 1 — Authentication
+    Admin->>CIM: POST /auth/v1/token (email + password)
+    CIM->>AUTH: Validate Credentials
+    AUTH-->>CIM: Return JWT Token
+    CIM-->>Admin: Login Successful — Dashboard Loaded
+
+    Resident->>CIM: POST /auth/v1/signup or token
+    CIM->>AUTH: Create or Verify Resident Account
+    AUTH-->>Resident: Auth Token — App Unlocked
+
+    Note over Agency,DB: Phase 2 — Incident Intake via CIM
+    Agency->>CIM: POST /api/incoming-incidents (JSON payload)
+    CIM->>CIM: Normalize & Validate Payload
+    CIM->>DB: INSERT incident — Status: Pending
+    DB-->>RT: CDC Change Event Fired
+    RT-->>Admin: Realtime push — New Pending Incident
+
+    Note over CallSys,DB: Phase 3 — Emergency Call Intake (Hotline)
+    CallSys->>CIM: POST /api/emergency-call-intake
+    CIM->>CIM: Validate Hotline Payload
+    CIM->>DB: INSERT into emergency_hotlines
+    DB-->>RT: Hotline Table Changed
+    RT-->>Admin: Hotline Manager Refreshed
+    RT-->>Resident: Hotlines Display Updated
+
+    Note over Admin,Resident: Phase 4 — AI Summarize & Broadcast
+    Admin->>CIM: Request AI Summarization (incident description)
+    CIM->>CIM: Forward to Gemini 3.5 Flash
+    CIM-->>Admin: Return AI Alert Summary Text
+    Admin->>DB: INSERT into alerts + UPDATE incident Status: Broadcasted
+    DB-->>RT: Alert CDC Event Triggered
+    RT-->>Resident: WebSocket Push — Emergency Alert Delivered
+    </pre>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────────────────────── -->
+<!-- 8. EMERGENCY CALL INTAKE FLOWCHART (NEW) -->
+<!-- ─────────────────────────────────────────────────────────────── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div>
+      <span class="tag tag-new">NEW</span>
+      <h2 style="display:inline">8. Emergency Call Intake — Custom Hotline Integration Flowchart <span class="label-new">NEW</span></h2>
+    </div>
+    <button class="btn-dl" onclick="downloadJPG('d8','08_Emergency_Call_Intake_Flowchart.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d8">
+    <pre class="mermaid">
+flowchart TD
+    START(["📞 Emergency Call Intake Subsystem\nExternal Hotline System Initiates Request"])
+
+    START --> POST["HTTP POST /api/emergency-call-intake\nPayload: name, phone_number, category,\nsource_system, priority, description"]
+
+    POST --> CIM_RECV["📡 Communication Integration Module\nReceives & Validates Payload"]
+
+    CIM_RECV --> VALID{"All Required Fields\nPresent & Valid?"}
+
+    VALID -- No --> ERROR["Return 400 Bad Request\nError Message to Call Intake System"]
+    ERROR --> END_ERR(["❌ Hotline Entry Rejected"])
+
+    VALID -- Yes --> NORMALIZE["CIM Normalizes Payload\nSets: is_local=true, status=ACTIVE\nsource=call-intake"]
+
+    NORMALIZE --> RLS_CHECK{"Row Level Security\nPolicy Allows INSERT?"}
+
+    RLS_CHECK -- No --> RLS_ERR["Return 403 Forbidden\n(API Key or RLS Policy Failed)"]
+    RLS_ERR --> END_RLS(["❌ Rejected by Security Layer"])
+
+    RLS_CHECK -- Yes --> INSERT["INSERT into emergency_hotlines\n{id UUID, name, phone_number, category,\nis_local, source_system, priority, status}"]
+
+    INSERT --> DB_DONE["✅ Hotline Saved to PostgreSQL Database"]
+
+    DB_DONE --> CDC["Supabase Realtime CDC\nFires Change Event on emergency_hotlines"]
+
+    CDC --> ADMIN_RT["Admin Web Portal Receives\nRealtime Update"]
+    CDC --> APP_RT["Resident Mobile App\nHotlines Display Refreshed"]
+
+    ADMIN_RT --> ADMIN_VIEW["Hotline Now Visible in\nAdmin Hotline Manager\n(Marked: Call Intake Entry)"]
+    APP_RT   --> APP_VIEW["New Custom Hotline\nAppears in Emergency Hotlines Display\nResident Can Tap to Call"]
+
+    ADMIN_VIEW & APP_VIEW --> END_OK(["✅ Emergency Call Intake Hotline\nSuccessfully Added & Available to All Residents"])
+    </pre>
+  </div>
+</div>
+
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'neutral', fontFamily: "'Segoe UI', Roboto, sans-serif", flowchart: { curve: 'basis' } });
+
+  function downloadJPG(id, filename) {
+    const el = document.getElementById(id);
+    const svg = el.querySelector('svg');
+    if (!svg) { alert('Diagram still rendering — please wait a moment and try again.'); return; }
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = function () {
+      const scale = 2;
+      const w = svg.getBoundingClientRect().width  || 1000;
+      const h = svg.getBoundingClientRect().height || 700;
+      const canvas = document.createElement('canvas');
+      canvas.width  = w * scale;
+      canvas.height = h * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0);
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = canvas.toDataURL('image/jpeg', 0.95);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }
+
+  function downloadAll() {
+    const items = [
+      { id: 'd1', name: '01_System_Architecture.jpg' },
+      { id: 'd2', name: '02_Data_Flow_Diagram.jpg' },
+      { id: 'd3', name: '03_Integration_Diagram.jpg' },
+      { id: 'd4', name: '04_Communication_Pattern.jpg' },
+      { id: 'd5', name: '05_Use_Case_Diagram.jpg' },
+      { id: 'd6', name: '06_API_Gateway.jpg' },
+      { id: 'd7', name: '07_Sequence_Diagram.jpg' },
+      { id: 'd8', name: '08_Emergency_Call_Intake_Flowchart.jpg' },
+    ];
+    items.forEach((item, i) => setTimeout(() => downloadJPG(item.id, item.name), i * 700));
+  }
+</script>
+</body>
+</html>

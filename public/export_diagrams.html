@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Barangay 178 ECS — Capstone System Diagrams Export</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+      background: #f4f6f9;
+      color: #1a202c;
+      padding: 30px;
+    }
+    .header {
+      max-width: 1200px;
+      margin: 0 auto 30px;
+      background: #ffffff;
+      padding: 24px 32px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .header h1 { font-size: 22px; color: #0f172a; font-weight: 700; }
+    .header p { font-size: 13px; color: #64748b; margin-top: 4px; }
+    .btn-export-all {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      padding: 12px 24px;
+      font-weight: 600;
+      font-size: 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-export-all:hover { background: #1d4ed8; }
+    
+    .diagram-card {
+      max-width: 1200px;
+      margin: 0 auto 40px;
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+      overflow: hidden;
+      border: 1px solid #e2e8f0;
+    }
+    .diagram-header {
+      padding: 16px 24px;
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .diagram-header h2 { font-size: 16px; font-weight: 600; color: #1e293b; }
+    .btn-download {
+      background: #0f172a;
+      color: #fff;
+      border: none;
+      padding: 8px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .btn-download:hover { background: #334155; }
+    .diagram-body {
+      padding: 40px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #ffffff;
+      min-height: 300px;
+    }
+    .mermaid { width: 100%; display: flex; justify-center: center; }
+    .mermaid svg { max-width: 100% !important; height: auto !important; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <div>
+      <h1>Barangay 178 ECS — Research Diagrams Export</h1>
+      <p>Click "Download JPG" on any diagram to download high-resolution image for your Capstone Paper</p>
+    </div>
+    <button class="btn-export-all" onclick="downloadAllJPG()">Download All 6 Diagrams (JPG)</button>
+  </div>
+
+  <!-- 1. System Architecture -->
+  <div class="diagram-card">
+    <div class="diagram-header">
+      <h2>1. System Architecture & Microservices Diagram</h2>
+      <button class="btn-download" onclick="downloadJPG('diag-1', '01_System_Architecture.jpg')">Download JPG</button>
+    </div>
+    <div class="diagram-body" id="diag-1">
+      <pre class="mermaid">
+graph TB
+    subgraph Client_Layer ["Client Layer (User Interfaces)"]
+        A["📱 Resident Mobile App<br/>(Android / Kotlin)"]
+        B["💻 Admin Web Portal<br/>(React + Vite + TypeScript)"]
+    end
+
+    subgraph Integration_Layer ["Integration & AI Layer"]
+        C["🌐 REST API Gateway<br/>(/api/incoming-incidents)"]
+        D["🤖 Gemini AI Assistant<br/>(gemini-3.5-flash)"]
+    end
+
+    subgraph Backend_Layer ["Backend (Supabase BaaS)"]
+        E["🔒 Auth & Security"]
+        F["⚡ Realtime WebSockets"]
+        G["🗄️ PostgreSQL Database"]
+    end
+
+    subgraph External_Layer ["External Emergency Agencies"]
+        H["🚔 Police (PCP Barangay 178)"]
+        I["🚒 Fire & Rescue (BFP)"]
+        J["🏥 Medical Services"]
+    end
+
+    A <-->|Realtime Alerts| F
+    B <-->|Manage Incidents & Hotlines| G
+    B -->|Request Alert Summary| D
+    B <-->|Subscribe to Logs| F
+    H & I & J -->|Incident Payload| C
+    C -->|Normalize & Save| G
+    E --- G
+    F --- G
+      </pre>
+    </div>
+  </div>
+
+  <!-- 2. Data Flow Diagram -->
+  <div class="diagram-card">
+    <div class="diagram-header">
+      <h2>2. Data Flow Diagram (DFD Level 1)</h2>
+      <button class="btn-download" onclick="downloadJPG('diag-2', '02_Data_Flow_Diagram.jpg')">Download JPG</button>
+    </div>
+    <div class="diagram-body" id="diag-2">
+      <pre class="mermaid">
+graph TD
+    E1["👤 Resident User"]
+    E2["👮 Barangay Administrator"]
+    E3["🚑 External Agency"]
+
+    P1["1.0 Incident Ingestion"]
+    P2["2.0 AI Summarization"]
+    P3["3.0 Realtime Broadcast"]
+    P4["4.0 Hotline CRUD"]
+
+    D1[("D1: Incidents DB")]
+    D2[("D2: Alerts Log DB")]
+    D3[("D3: Hotlines DB")]
+
+    E3 -->|Submit Incident Payload| P1
+    P1 -->|Save Pending Incident| D1
+    E2 -->|Fetch Pending Incidents| D1
+    D1 -->|Read Incident Details| P2
+    P2 -->|Generated AI Summary| E2
+    E2 -->|Confirm Broadcast Request| P3
+    P3 -->|Write Alert Record| D2
+    P3 -->|Update Status: Broadcasted| D1
+    P3 -->|WebSocket Alert Push| E1
+    E2 -->|Manage Hotlines| P4
+    P4 -->|Update Hotlines| D3
+    D3 -->|Fetch Hotlines List| E1
+      </pre>
+    </div>
+  </div>
+
+  <!-- 3. Integration & API Gateway -->
+  <div class="diagram-card">
+    <div class="diagram-header">
+      <h2>3. Integration & API Gateway Architecture</h2>
+      <button class="btn-download" onclick="downloadJPG('diag-3', '03_Integration_API_Gateway.jpg')">Download JPG</button>
+    </div>
+    <div class="diagram-body" id="diag-3">
+      <pre class="mermaid">
+graph LR
+    subgraph External_Subsystems ["External Emergency Agencies"]
+        S1["Community Police Unit"]
+        S2["Fire & Rescue Services"]
+        S3["Disaster Risk DRR Office"]
+    end
+
+    subgraph Gateway ["API Gateway & Security Layer"]
+        GW["REST Endpoint Router"]
+        AUTH["Row Level Security (RLS) & Auth"]
+    end
+
+    subgraph Core_Services ["Core System Services"]
+        IS["Incident Storage"]
+        AIS["Gemini AI Summarizer"]
+        BS["Realtime Broadcast Service"]
+    end
+
+    subgraph Endpoints ["Client Endpoints"]
+        WEB["Admin Web Dashboard"]
+        MOB["Resident Android App"]
+    end
+
+    S1 & S2 & S3 -->|HTTP POST /api/incoming-incidents| GW
+    GW --> AUTH
+    AUTH --> IS
+    IS --> WEB
+    WEB --> AIS
+    WEB --> BS
+    BS -->|WebSocket Push Stream| MOB
+      </pre>
+    </div>
+  </div>
+
+  <!-- 4. Use Case Diagram -->
+  <div class="diagram-card">
+    <div class="diagram-header">
+      <h2>4. System Use Case Diagram</h2>
+      <button class="btn-download" onclick="downloadJPG('diag-4', '04_Use_Case_Diagram.jpg')">Download JPG</button>
+    </div>
+    <div class="diagram-body" id="diag-4">
+      <pre class="mermaid">
+graph LR
+    subgraph Actors ["Actors"]
+        Admin(("Barangay Admin"))
+        Resident(("Resident User"))
+        Agency(("External Agency"))
+    end
+
+    subgraph System ["Barangay 178 ECS"]
+        UC1["Submit Incident Report"]
+        UC2["View Incoming Queue"]
+        UC3["Update Status (Seen)"]
+        UC4["Generate AI Alert Summary"]
+        UC5["Broadcast Emergency Alert"]
+        UC6["View Communication Logs"]
+        UC7["Manage Hotlines (CRUD)"]
+        UC8["Receive Realtime Alert Push"]
+        UC9["View Local Emergency Hotlines"]
+    end
+
+    Agency --> UC1
+    Admin --> UC2
+    Admin --> UC3
+    Admin --> UC4
+    Admin --> UC5
+    Admin --> UC6
+    Admin --> UC7
+    Resident --> UC8
+    Resident --> UC9
+      </pre>
+    </div>
+  </div>
+
+  <!-- 5. Sequence Diagram -->
+  <div class="diagram-card">
+    <div class="diagram-header">
+      <h2>5. Sequence Diagram — Emergency Broadcast Workflow</h2>
+      <button class="btn-download" onclick="downloadJPG('diag-5', '05_Sequence_Diagram.jpg')">Download JPG</button>
+    </div>
+    <div class="diagram-body" id="diag-5">
+      <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    actor Admin as Admin Operator
+    participant UI as Admin Web Portal
+    participant AI as Gemini AI Engine
+    participant DB as Supabase PostgreSQL
+    participant RT as Realtime Server
+    actor Resident as Resident App
+
+    Admin->>UI: Click 'View' on Incident (Pending)
+    UI->>DB: Update Status to 'Seen'
+    DB-->>UI: Confirm Status Updated
+
+    Admin->>UI: Click 'Generate Summarized AI Alert'
+    UI->>AI: Send Prompt (Type, Location, Raw Description)
+    AI-->>UI: Return Concise Emergency Alert Text
+
+    Admin->>UI: Review Preview & Click 'Broadcast Now'
+    UI->>DB: Insert Alert Record & Mark Incident 'Broadcasted'
+    DB-->>UI: Confirm Broadcast Saved
+
+    DB->>RT: Trigger Postgres Change Listener
+    RT->>Resident: Push Alert Notification (WebSocket)
+      </pre>
+    </div>
+  </div>
+
+  <!-- 6. Process Flowchart -->
+  <div class="diagram-card">
+    <div class="diagram-header">
+      <h2>6. System Process Flowchart</h2>
+      <button class="btn-download" onclick="downloadJPG('diag-6', '06_Process_Flowchart.jpg')">Download JPG</button>
+    </div>
+    <div class="diagram-body" id="diag-6">
+      <pre class="mermaid">
+flowchart TD
+    Start([Start: Incident Ingested]) --> SavePending[Save to DB with Status: Pending]
+    SavePending --> ShowQueue[Display in Incoming Queue]
+    ShowQueue --> AdminView[Admin Clicks View]
+    AdminView --> MarkSeen[Update Status: Seen]
+    MarkSeen --> Choice{Select Broadcast Path}
+    
+    Choice -->|AI Route| ClickGen[Click 'Generate Summarized AI Alert']
+    ClickGen --> CallAI[Gemini AI Generates Alert Text]
+    CallAI --> ClickUse[Click 'Use this message now']
+    
+    Choice -->|Default Route| ClickDefault[Click 'Use this message too']
+    
+    ClickUse --> FillForm[Pre-fill Broadcast Alert Form]
+    ClickDefault --> FillForm
+    
+    FillForm --> SubmitBroadcast[Click 'Broadcast Alert']
+    SubmitBroadcast --> ShowPreview[Open Preview Modal]
+    ShowPreview --> Confirm{Admin Confirms Broadcast}
+    
+    Confirm -->|Cancel| FillForm
+    Confirm -->|Confirm| SaveAlert[Save Alert to DB & Set Status: Broadcasted]
+    SaveAlert --> WebSocketPush[Realtime WebSocket Broadcast to Mobile Apps]
+    WebSocketPush --> RemoveQueue[Remove Incident from Active Queue]
+    RemoveQueue --> End([End Workflow])
+      </pre>
+    </div>
+  </div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'neutral',
+      fontFamily: "'Segoe UI', Roboto, sans-serif"
+    });
+
+    function downloadJPG(elementId, filename) {
+      const container = document.getElementById(elementId);
+      const svg = container.querySelector('svg');
+      if (!svg) {
+        alert('Diagram is still rendering, please try again in a moment.');
+        return;
+      }
+
+      // Clone SVG and set background
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const URL = window.URL || window.webkitURL || window;
+      const blobURL = URL.createObjectURL(svgBlob);
+
+      const img = new Image();
+      img.onload = function () {
+        const scale = 2; // High resolution 2x
+        const canvas = document.createElement('canvas');
+        canvas.width = (svg.getBoundingClientRect().width || 800) * scale;
+        canvas.height = (svg.getBoundingClientRect().height || 600) * scale;
+
+        const ctx = canvas.getContext('2d');
+        // White background for clean JPG
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0);
+
+        const imgURI = canvas.toDataURL('image/jpeg', 0.95);
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = imgURI;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(blobURL);
+      };
+      img.src = blobURL;
+    }
+
+    function downloadAllJPG() {
+      const items = [
+        { id: 'diag-1', name: '01_System_Architecture.jpg' },
+        { id: 'diag-2', name: '02_Data_Flow_Diagram.jpg' },
+        { id: 'diag-3', name: '03_Integration_API_Gateway.jpg' },
+        { id: 'diag-4', name: '04_Use_Case_Diagram.jpg' },
+        { id: 'diag-5', name: '05_Sequence_Diagram.jpg' },
+        { id: 'diag-6', name: '06_Process_Flowchart.jpg' }
+      ];
+
+      items.forEach((item, index) => {
+        setTimeout(() => {
+          downloadJPG(item.id, item.name);
+        }, index * 500);
+      });
+    }
+  </script>
+</body>
+</html>

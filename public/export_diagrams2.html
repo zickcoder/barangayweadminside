@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Barangay 178 ECS — Capstone Diagrams Set 2</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+      background: #f0f4f8;
+      color: #1a202c;
+      padding: 30px;
+    }
+    .header {
+      max-width: 1300px; margin: 0 auto 30px;
+      background: #fff; padding: 24px 32px;
+      border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .header h1 { font-size: 20px; color: #0f172a; font-weight: 700; }
+    .header p  { font-size: 13px; color: #64748b; margin-top: 4px; }
+    .btn-all {
+      background: #2563eb; color: #fff; border: none;
+      padding: 12px 22px; font-weight: 600; font-size: 14px;
+      border-radius: 8px; cursor: pointer;
+    }
+    .btn-all:hover { background: #1d4ed8; }
+    .diagram-card {
+      max-width: 1300px; margin: 0 auto 36px;
+      background: #fff; border-radius: 12px;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.06);
+      border: 1px solid #e2e8f0; overflow: hidden;
+    }
+    .diagram-header {
+      padding: 14px 24px; background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .diagram-header h2 { font-size: 15px; font-weight: 600; color: #1e293b; }
+    .tag {
+      font-size: 11px; padding: 3px 8px; border-radius: 4px;
+      background: #dbeafe; color: #1d4ed8; font-weight: 600; margin-right: 8px;
+    }
+    .btn-dl {
+      background: #0f172a; color: #fff; border: none;
+      padding: 7px 16px; font-size: 12px; font-weight: 600;
+      border-radius: 6px; cursor: pointer;
+    }
+    .btn-dl:hover { background: #334155; }
+    .diagram-body {
+      padding: 40px; display: flex; justify-content: center;
+      align-items: flex-start; background: #fff; min-height: 250px;
+    }
+    .mermaid { width: 100%; display: flex; justify-content: center; }
+    .mermaid svg { max-width: 100% !important; height: auto !important; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Barangay 178 ECS — Capstone Research Diagrams (Set 2)</h1>
+    <p>Click "Download JPG" per diagram or "Download All" to batch export high-resolution images for your Capstone Paper</p>
+  </div>
+  <button class="btn-all" onclick="downloadAll()">⬇ Download All 9 Diagrams (JPG)</button>
+</div>
+
+<!-- ─── 1. AGILE SCRUM FRAMEWORK ─── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div><span class="tag">Process</span><h2>1. Agile Scrum Framework — Sprint Cycle</h2></div>
+    <button class="btn-dl" onclick="downloadJPG('d1','01_Agile_Scrum_Framework.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d1">
+    <pre class="mermaid">
+graph LR
+    PB["📋 Product Backlog\n(All System Features\n& User Stories)"]
+    SP["🗓️ Sprint Planning\n(2-Week Sprint Cycle)\nSelect tasks from backlog"]
+    SB["📌 Sprint Backlog\n(Assigned Tasks\nfor current Sprint)"]
+    DEV["💻 Sprint Development\n(Daily Coding,\nTesting & Integration)"]
+    DSC["🌅 Daily Scrum Stand-up\n15-min sync — What was done?\nWhat's blocking?"]
+    SR["🎯 Sprint Review\n(Demo to Stakeholders)\nPresent working features"]
+    RETRO["🔄 Sprint Retrospective\n(What went well?\nWhat to improve?)"]
+    DONE["✅ Increment\n(Potentially Shippable\nProduct Feature)"]
+
+    PB --> SP --> SB --> DEV
+    DEV <--> DSC
+    DEV --> SR --> RETRO --> SP
+    SR --> DONE
+    </pre>
+  </div>
+</div>
+
+<!-- ─── 2. BURNDOWN CHART ─── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div><span class="tag">Metrics</span><h2>2. Sprint Burndown Chart (14-Day Sprint)</h2></div>
+    <button class="btn-dl" onclick="downloadJPG('d2','02_Burndown_Chart.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d2">
+    <pre class="mermaid">
+xychart-beta
+    title "Barangay 178 ECS — Sprint Burndown (60 Story Points)"
+    x-axis ["D1","D2","D3","D4","D5","D6","D7","D8","D9","D10","D11","D12","D13","D14"]
+    y-axis "Story Points Remaining" 0 --> 65
+    line [60, 56, 51, 46, 41, 38, 33, 28, 23, 19, 14, 10, 5, 0]
+    bar   [60, 56, 51, 46, 41, 38, 33, 28, 23, 19, 14, 10, 5, 0]
+    </pre>
+  </div>
+</div>
+
+<!-- ─── 3. COMMUNICATION PATTERN ─── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div><span class="tag">Architecture</span><h2>3. Communication Pattern — End-to-End Alert Flow</h2></div>
+    <button class="btn-dl" onclick="downloadJPG('d3','03_Communication_Pattern.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d3">
+    <pre class="mermaid">
+graph TD
+    subgraph External["External Emergency Agency"]
+        AGY["🚑 Emergency Agency\n(Police / BFP / Medical)"]
+    end
+
+    subgraph AdminPortal["Administrator Web Portal (React + Vite)"]
+        RECV["Incident Received\nincoming_incidents table"]
+        REVIEW["Admin Reviews Incident\nStatus: Pending → Seen"]
+        AI_GEN["Gemini AI\nSummarization Service"]
+        BC["Broadcast Alert\nINSERT into alerts table"]
+    end
+
+    subgraph Realtime["Supabase Realtime Layer (WebSocket CDC)"]
+        CDC["PostgreSQL\nChange Capture (CDC)"]
+        WS["WebSocket\nBroadcast Channel"]
+    end
+
+    subgraph MobileApp["Resident Mobile App (Android / Kotlin)"]
+        SUB["Realtime Listener\n(subscribed to alerts channel)"]
+        NOTIF["🔔 Emergency Notification\nDisplayed to Resident"]
+        HOTLINE["📞 Emergency Hotlines\n(fetched from DB)"]
+    end
+
+    AGY -->|HTTP POST JSON| RECV
+    RECV --> REVIEW
+    REVIEW --> AI_GEN --> BC
+    BC --> CDC --> WS --> SUB --> NOTIF
+    MobileApp --> HOTLINE
+    </pre>
+  </div>
+</div>
+
+<!-- ─── 4. INFRASTRUCTURE AS CODE ─── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div><span class="tag">DevOps</span><h2>4. Infrastructure as Code (IaC) — Supabase SQL Migration Architecture</h2></div>
+    <button class="btn-dl" onclick="downloadJPG('d4','04_Infrastructure_as_Code.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d4">
+    <pre class="mermaid">
+graph TB
+    subgraph IaC["IaC — Version-Controlled SQL Migrations (supabase/migrations/)"]
+        M1["📄 001_admin_tables.sql\n─────────────────────────\n• CREATE TABLE incoming_incidents\n• CREATE TABLE alerts\n• CREATE TABLE broadcast_logs\n• ENABLE Row Level Security (RLS)\n• GRANT insert / select policies"]
+        M2["📄 002_hotlines_table.sql\n─────────────────────────\n• CREATE TABLE emergency_hotlines\n• ADD missing columns (description, priority)\n• INSERT default seed hotlines (UUID cast)\n• ENABLE RLS CRUD policies"]
+    end
+
+    subgraph Supabase["Supabase Cloud Infrastructure (Provisioned via Migrations)"]
+        PG["🗄️ PostgreSQL Database"]
+        AUTH["🔐 Auth Engine\n+ RLS Enforcement"]
+        RT["⚡ Realtime Engine\n(WebSocket CDC)"]
+        APIREST["🌐 Auto-generated\nREST API Layer"]
+    end
+
+    subgraph AppConfig["Application Configuration (.env)"]
+        ENV["VITE_SUPABASE_URL\nVITE_SUPABASE_ANON_KEY\nVITE_GEMINI_API_KEY"]
+        SC["supabase.ts\nClient Initialization"]
+    end
+
+    M1 & M2 -->|Run in Supabase SQL Editor| PG
+    PG --> AUTH & RT & APIREST
+    ENV --> SC
+    SC --> APIREST & RT
+    </pre>
+  </div>
+</div>
+
+<!-- ─── 5. MONITORING AND ALERTING ─── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div><span class="tag">Operations</span><h2>5. Monitoring and Alerting Strategy</h2></div>
+    <button class="btn-dl" onclick="downloadJPG('d5','05_Monitoring_and_Alerting.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d5">
+    <pre class="mermaid">
+graph LR
+    subgraph Apps["Live Application Services"]
+        WEB["💻 Admin Web Portal\n(React + Vite)"]
+        MOB["📱 Resident Mobile App\n(Android / Kotlin)"]
+        SB["☁️ Supabase Backend\n(PostgreSQL + Realtime)"]
+        AIAPI["🤖 Gemini AI Service"]
+    end
+
+    subgraph Monitoring["Monitoring Tools"]
+        SBD["Supabase Dashboard\n• Query performance logs\n• Auth access logs\n• API request metrics\n• RLS error reports"]
+        BROWSER["Browser DevTools\n• Console error logs\n• Network request failures\n• WebSocket connection state"]
+        LOGCAT["Android Logcat\n• App crash reports\n• Realtime timeout errors\n• Supabase client errors"]
+    end
+
+    subgraph ErrorHandling["In-App Error Handling"]
+        UI["UI Error Messages\n• Broadcast failed: RLS policy\n• Gemini: API key not configured\n• Connection: Supabase offline"]
+        TS["TypeScript Compiler\n• Build-time type errors\n• Null reference prevention\n• Missing property detection"]
+    end
+
+    WEB --> BROWSER
+    MOB --> LOGCAT
+    SB --> SBD
+    AIAPI --> UI
+    SB --> UI
+    WEB --> TS
+    BROWSER & LOGCAT & SBD --> ErrorHandling
+    </pre>
+  </div>
+</div>
+
+<!-- ─── 6. INTEGRATION DIAGRAM ─── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div><span class="tag">Integration</span><h2>6. System Integration Diagram — All Component Connections</h2></div>
+    <button class="btn-dl" onclick="downloadJPG('d6','06_Integration_Diagram.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d6">
+    <pre class="mermaid">
+graph TB
+    subgraph External["External Emergency Subsystems"]
+        PCP["🚔 PCP Barangay 178"]
+        BFP["🚒 BFP Fire Services"]
+        BHS["🏥 BHS Medical Unit"]
+        DRRM["🌀 DRRM Office"]
+    end
+
+    subgraph Integration["Integration & API Layer"]
+        REST["REST Endpoint\nPOST /api/incoming-incidents\n(incidentApi.ts)"]
+        NORM["Payload Normalizer\n(Schema validation,\ndefault status: Pending)"]
+    end
+
+    subgraph Backend["Supabase Backend (BaaS)"]
+        RLS["🔐 Row Level Security (RLS)\nAuth Key Validation"]
+        DB[("🗄️ PostgreSQL\nDatabase")]
+        RT["⚡ Realtime Engine\n(WebSocket CDC)"]
+    end
+
+    subgraph AdminPortal["Admin Web Portal"]
+        INC_VIEW["Incoming Incidents Queue"]
+        GEMINI["Gemini AI Summarizer\n(gemini-3.5-flash)"]
+        BROADCAST["Alert Broadcast Service"]
+        HOTLINE_CRUD["Emergency Hotlines CRUD"]
+        LOGS["Communication Logs Viewer"]
+    end
+
+    subgraph MobileApp["Resident Mobile App"]
+        LISTENER["Realtime Alert Listener"]
+        HOTLINES["Emergency Hotlines Display"]
+        SETTINGS["App Settings Sync"]
+    end
+
+    PCP & BFP & BHS & DRRM --> REST --> NORM --> RLS --> DB
+    DB --> RT
+    RT --> INC_VIEW & LISTENER
+    INC_VIEW --> GEMINI --> BROADCAST --> DB
+    HOTLINE_CRUD --> DB --> HOTLINES
+    DB --> LOGS
+    DB --> SETTINGS
+    </pre>
+  </div>
+</div>
+
+<!-- ─── 7. API GATEWAY ─── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div><span class="tag">Security</span><h2>7. API Gateway Architecture — Security & Routing</h2></div>
+    <button class="btn-dl" onclick="downloadJPG('d7','07_API_Gateway.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d7">
+    <pre class="mermaid">
+graph LR
+    subgraph Clients["Client Applications"]
+        WEB["💻 Admin Web Portal\n(React + TypeScript)"]
+        MOB["📱 Resident Android App\n(Kotlin)"]
+        EXT["🚔 External Agency\n(Emergency System)"]
+    end
+
+    subgraph Gateway["Supabase API Gateway Layer"]
+        KEY_VAL["🔑 API Key Validation\n(anon key / service key)"]
+        CORS_CHECK["🌐 CORS Policy Check\n(allowed origins only)"]
+        JWT["🎫 JWT Token Verification\n(if authenticated route)"]
+        RLS_EVAL["🛡️ Row Level Security (RLS)\nPer-table policy evaluation"]
+    end
+
+    subgraph APIs["Exposed API Endpoints"]
+        REST_API["REST API\n(CRUD on all tables)\n/rest/v1/{table}"]
+        RT_API["Realtime API\n(WebSocket subscriptions)\n/realtime/v1/websocket"]
+        AUTH_API["Auth API\n(/auth/v1/*)"]
+    end
+
+    subgraph Tables["PostgreSQL Tables"]
+        T_INC["incoming_incidents"]
+        T_ALE["alerts"]
+        T_HOT["emergency_hotlines"]
+        T_SET["app_settings"]
+    end
+
+    WEB & MOB & EXT --> KEY_VAL --> CORS_CHECK --> JWT --> RLS_EVAL
+    RLS_EVAL --> REST_API & RT_API & AUTH_API
+    REST_API --> T_INC & T_ALE & T_HOT & T_SET
+    RT_API --> T_INC & T_ALE
+    </pre>
+  </div>
+</div>
+
+<!-- ─── 8. SEQUENCE DIAGRAM ─── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div><span class="tag">Interaction</span><h2>8. Sequence Diagram — Full Emergency Alert Lifecycle</h2></div>
+    <button class="btn-dl" onclick="downloadJPG('d8','08_Sequence_Diagram.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d8">
+    <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    actor Agency as Emergency Agency
+    participant GW as REST API Gateway
+    participant DB as PostgreSQL DB
+    participant RT as Realtime Server
+    participant Admin as Admin Web Portal
+    participant AI as Gemini AI Engine
+    actor Resident as Resident Mobile App
+
+    Agency->>GW: POST /api/incoming-incidents (JSON)
+    GW->>DB: INSERT incident (Status: Pending)
+    DB-->>RT: CDC Change Event Triggered
+    RT-->>Admin: Realtime push — New incident in queue
+
+    Admin->>DB: UPDATE status = 'Seen' (View clicked)
+    DB-->>Admin: Confirm status updated
+
+    Admin->>AI: Send prompt with incident description
+    Note over AI: Gemini 3.5 Flash processes<br/>emergency details
+    AI-->>Admin: Return official alert summary text
+
+    Admin->>Admin: Review Preview Modal
+    Admin->>DB: INSERT into alerts table
+    Admin->>DB: UPDATE incident status = 'Broadcasted'
+    DB-->>RT: CDC Triggers WebSocket broadcast
+    RT-->>Resident: Push emergency alert notification
+    Note over Resident: Alert displayed instantly<br/>on resident device
+    </pre>
+  </div>
+</div>
+
+<!-- ─── 9. PROCESS FLOWCHART ─── -->
+<div class="diagram-card">
+  <div class="diagram-header">
+    <div><span class="tag">Workflow</span><h2>9. System Process Flowchart — Emergency Response Workflow</h2></div>
+    <button class="btn-dl" onclick="downloadJPG('d9','09_Process_Flowchart.jpg')">Download JPG</button>
+  </div>
+  <div class="diagram-body" id="d9">
+    <pre class="mermaid">
+flowchart TD
+    START(["🚨 Emergency Incident Occurs"]) --> REPORT["External Agency Creates Incident Report"]
+    REPORT --> POST["HTTP POST to /api/incoming-incidents"]
+    POST --> VALID{"Payload Valid?"}
+    VALID -- No --> ERR["Return 400 Error to Agency"]
+    VALID -- Yes --> SAVE["Save to DB\nStatus: Pending"]
+    SAVE --> REALTIME["Admin Portal Receives\nRealtime Update"]
+    REALTIME --> QUEUE["Incident Appears in Queue\nwith Pending Badge"]
+
+    QUEUE --> VIEW["Admin Clicks View Button"]
+    VIEW --> MARK_SEEN["Status Updated:\nPending → Seen"]
+    MARK_SEEN --> MODAL["Incident Detail Dialog Opens"]
+
+    MODAL --> PATH{"Select Broadcast Method"}
+
+    PATH -- AI Route --> GEN["Click Generate Summarized AI Alert"]
+    GEN --> GEMINI["Gemini AI Processes\nIncident Description"]
+    GEMINI --> AI_RESULT["AI Returns Official\nAlert Text Summary"]
+    AI_RESULT --> CONFIRM_AI{"Admin Satisfied?"}
+    CONFIRM_AI -- No, Regenerate --> GEN
+    CONFIRM_AI -- Yes --> USE_AI["Click Use This Message Now"]
+
+    PATH -- Default Route --> USE_DEF["Click Use This Message Too\n(Original description)"]
+
+    USE_AI & USE_DEF --> PREFILL["Broadcast Form Pre-filled\nwith Selected Message"]
+    PREFILL --> CLICK_BC["Admin Clicks Broadcast Button"]
+    CLICK_BC --> PREVIEW["Preview Modal Opens\n(title, priority, message)"]
+    PREVIEW --> APPROVE{"Admin Confirms?"}
+    APPROVE -- Cancel --> PREFILL
+    APPROVE -- Confirm --> INSERT_ALERT["INSERT Alert into DB\nStatus → Broadcasted"]
+    INSERT_ALERT --> WS["Supabase Realtime\nWebSocket Event Triggered"]
+    WS --> DELIVER["All Resident Apps\nReceive Alert Notification"]
+    DELIVER --> CLEAR["Incident Removed\nfrom Active Queue"]
+    CLEAR --> END(["✅ Emergency Alert\nSuccessfully Delivered"])
+    </pre>
+  </div>
+</div>
+
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: 'neutral', fontFamily: "'Segoe UI', Roboto, sans-serif" });
+
+  function downloadJPG(id, filename) {
+    const el = document.getElementById(id);
+    const svg = el.querySelector('svg');
+    if (!svg) { alert('Diagram still rendering, please wait a moment and try again.'); return; }
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = function () {
+      const scale = 2;
+      const w = svg.getBoundingClientRect().width || 900;
+      const h = svg.getBoundingClientRect().height || 600;
+      const canvas = document.createElement('canvas');
+      canvas.width = w * scale;
+      canvas.height = h * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0);
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = canvas.toDataURL('image/jpeg', 0.95);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }
+
+  function downloadAll() {
+    const items = [
+      { id: 'd1', name: '01_Agile_Scrum_Framework.jpg' },
+      { id: 'd2', name: '02_Burndown_Chart.jpg' },
+      { id: 'd3', name: '03_Communication_Pattern.jpg' },
+      { id: 'd4', name: '04_Infrastructure_as_Code.jpg' },
+      { id: 'd5', name: '05_Monitoring_and_Alerting.jpg' },
+      { id: 'd6', name: '06_Integration_Diagram.jpg' },
+      { id: 'd7', name: '07_API_Gateway.jpg' },
+      { id: 'd8', name: '08_Sequence_Diagram.jpg' },
+      { id: 'd9', name: '09_Process_Flowchart.jpg' },
+    ];
+    items.forEach((item, i) => setTimeout(() => downloadJPG(item.id, item.name), i * 600));
+  }
+</script>
+</body>
+</html>
