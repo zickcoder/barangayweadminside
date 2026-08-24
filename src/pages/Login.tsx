@@ -7,11 +7,12 @@ import { Mail, Lock, KeyRound, ArrowLeft, ShieldAlert, Sun, Moon, AlertCircle, C
 export default function Login() {
   const navigate = useNavigate()
   const { theme, toggleTheme } = useTheme()
-  const {
+    const {
     isAuthenticated,
     isLockedOut,
     lockoutUntil,
     adminEmail,
+    validateCredentials,
     recordFailedAttempt,
     resetAttempts,
     sendOtpCode,
@@ -111,10 +112,11 @@ export default function Login() {
       return
     }
 
-    // Verify admin credentials
-    if (email.toLowerCase().trim() === adminEmail.toLowerCase().trim() && password === 'admin123!') {
-      setLoading(true)
-      try {
+    setLoading(true)
+    try {
+      // Secure server-side / Supabase credential verification
+      const authCheck = await validateCredentials(email, password)
+      if (authCheck.success) {
         const otpResult = await sendOtpCode(email)
         setOtpExpiry(Date.now() + 5 * 60 * 1000) // start 5-min OTP timer
         if (otpResult.error) {
@@ -124,18 +126,18 @@ export default function Login() {
         }
         setStep('otp')
         setOtpAttempts(0) // reset OTP attempt counter
-      } catch (err: any) {
-        setErrorMsg(err.message || 'Failed to dispatch security code.')
-      } finally {
-        setLoading(false)
+      } else {
+        // Failed credentials attempt
+        const remaining = recordFailedAttempt()
+        setAttemptsLeft(remaining)
+        if (remaining > 0) {
+          setErrorMsg(`Invalid email or password. You have ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`)
+        }
       }
-    } else {
-      // Failed credentials attempt
-      const remaining = recordFailedAttempt()
-      setAttemptsLeft(remaining)
-      if (remaining > 0) {
-        setErrorMsg(`Invalid email or password. You have ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`)
-      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Authentication failed. Please try again.')
+    } finally {
+      setLoading(false)
     }
   }
 

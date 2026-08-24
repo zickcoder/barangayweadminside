@@ -9,6 +9,7 @@ interface AuthContextType {
   adminEmail: string
   activeOtpCode: string | null
   updateAdminEmail: (newEmail: string) => Promise<{ success: boolean; error?: string }>
+  validateCredentials: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
   loading: boolean
   isAuthenticated: boolean
   failedAttempts: number
@@ -31,9 +32,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [activeOtpCode, setActiveOtpCode] = useState<string | null>(null)
   
-  // Dynamic Admin Email (Defaults to thacoj@gmail.com for receiving OTPs, editable in Settings)
+  // Dynamic Admin Email (editable in Settings, stored in localStorage/session)
   const [adminEmail, setAdminEmail] = useState<string>(() => {
-    return localStorage.getItem('barangay_admin_email') || 'thacoj@gmail.com'
+    return localStorage.getItem('barangay_admin_email') || 'admin@barangay178.gov.ph'
   })
 
   const [failedAttempts, setFailedAttempts] = useState<number>(() => {
@@ -201,6 +202,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { success: false, error: 'Invalid or expired verification code.' }
   }
 
+  const validateCredentials = async (inputEmail: string, inputPassword: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      // 1. Check server-side verification endpoint
+      const res = await fetch('/api/verify-credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inputEmail, password: inputPassword }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.valid) {
+          return { success: true }
+        }
+      }
+    } catch {
+      // Network/local fallback
+    }
+
+    // 2. Check Supabase Auth
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: inputEmail,
+        password: inputPassword,
+      })
+      if (!error) {
+        return { success: true }
+      }
+    } catch {
+      // ignore
+    }
+
+    return { success: false, error: 'Invalid email or password.' }
+  }
+
   const logout = async () => {
     try {
       await supabase.auth.signOut()
@@ -224,6 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         adminEmail,
         activeOtpCode,
         updateAdminEmail,
+        validateCredentials,
         loading,
         isAuthenticated,
         failedAttempts,

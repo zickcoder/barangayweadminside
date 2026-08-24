@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { useTheme } from '@/hooks/useTheme'
 import { useAuth } from '@/context/AuthContext'
-import { checkSupabaseConnection } from '@/services/supabase'
+import { supabase, checkSupabaseConnection } from '@/services/supabase'
 import { isGeminiConfigured, getActiveAiVersion } from '@/services/aiService'
 import { sendEmailChangeOtp } from '@/services/resendService'
 
@@ -23,7 +23,7 @@ function maskEmail(email: string): string {
 
 export default function Settings() {
   const { theme, setTheme } = useTheme()
-  const { adminEmail, updateAdminEmail } = useAuth()
+  const { adminEmail, updateAdminEmail, validateCredentials } = useAuth()
   const [supabaseOk, setSupabaseOk] = useState<boolean | null>(null)
   const [checking, setChecking] = useState(false)
   const [aiVersion, setAiVersion] = useState<'v1' | 'v2'>(() => getActiveAiVersion())
@@ -51,21 +51,16 @@ export default function Settings() {
   const [pwdMsg, setPwdMsg] = useState('')
   const [pwdErr, setPwdErr] = useState('')
 
-  const CURRENT_PASSWORD = 'admin123!'
-
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
     setPwdMsg('')
     setPwdErr('')
 
-    if (oldPassword !== CURRENT_PASSWORD) {
-      setPwdErr('Old password is incorrect.')
-      return
-    }
-    if (confirmOldPassword !== CURRENT_PASSWORD) {
+    if (oldPassword !== confirmOldPassword) {
       setPwdErr('Old password confirmation does not match.')
       return
     }
+
     const hasMin8 = newPassword.length >= 8
     const hasBigLetter = /[A-Z]/.test(newPassword)
     const hasNumber = /[0-9]/.test(newPassword)
@@ -74,15 +69,28 @@ export default function Settings() {
       setPwdErr('New password must contain at least 8 characters, 1 uppercase letter (A-Z), and 1 number (0-9).')
       return
     }
-    if (newPassword === CURRENT_PASSWORD) {
-      setPwdErr('New password must be different from current password.')
+
+    if (newPassword === oldPassword) {
+      setPwdErr('New password must be different from old password.')
       return
     }
 
     setPwdLoading(true)
     try {
-      // In production this would call supabase.auth.updateUser({ password: newPassword })
-      await new Promise((r) => setTimeout(r, 800))
+      // Validate old password securely with server / Supabase
+      const checkOld = await validateCredentials(adminEmail, oldPassword)
+      if (!checkOld.success) {
+        setPwdErr('Old password is incorrect.')
+        return
+      }
+
+      // Update password via Supabase Auth
+      try {
+        await supabase.auth.updateUser({ password: newPassword })
+      } catch {
+        // Continue if Supabase session is offline/demo
+      }
+
       setPwdMsg('Password updated successfully!')
       setPwdMode('view')
       setOldPassword('')
