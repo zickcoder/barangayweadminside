@@ -11,6 +11,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
     Pending:     { label: 'Pending',     cls: 'status-pending' },
     Seen:        { label: 'Viewed',      cls: 'status-ready' },
     Broadcasted: { label: 'Broadcasted', cls: 'status-broadcasted' },
+    Disregarded: { label: 'Disregarded', cls: 'status-pending' },
   }
 
   const { label, cls } = map[status] ?? { label: status, cls: 'status-pending' }
@@ -48,8 +49,8 @@ interface AlertPriorityBadgeProps {
 export function AlertPriorityBadge({ priority, className }: AlertPriorityBadgeProps) {
   const map: Record<string, { label: string; cls: string }> = {
     NORMAL: { label: 'Normal', cls: 'badge-low' },
-    WARNING: { label: 'Warning', cls: 'badge-medium' },
-    EMERGENCY: { label: 'Emergency', cls: 'badge-critical' },
+    WARNING: { label: 'Notification', cls: 'badge-medium' },
+    EMERGENCY: { label: 'Emergency Notification', cls: 'badge-critical' },
   }
 
   const { label, cls } = map[priority] ?? { label: priority, cls: 'badge-low' }

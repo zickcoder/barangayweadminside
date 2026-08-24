@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { supabase } from '@/services/supabase'
-import type { Alert, BroadcastFormData } from '@/types'
+import { generateIncidentId } from '@/lib/utils'
+import type { Alert, BroadcastFormData, IncidentPriority, IncidentStatus, IncidentType } from '@/types'
 
 export function useAlerts() {
   const queryClient = useQueryClient()
@@ -52,6 +53,37 @@ export function useBroadcastAlert() {
       form: BroadcastFormData
       incidentId?: string
     }) => {
+      let finalIncidentId = incidentId
+
+      // If manual broadcast (no pre-filled incoming incident), create a record in incoming_incidents
+      if (!finalIncidentId) {
+        const generatedIncId = generateIncidentId()
+        const incidentPayload = {
+          incident_id: generatedIncId,
+          source_subsystem: 'Barangay 178 Admin ECS',
+          incident_type: (form.emergency_type || 'OTHER') as IncidentType,
+          priority: (form.priority === 'EMERGENCY' ? 'CRITICAL' : form.priority === 'WARNING' ? 'HIGH' : 'MEDIUM') as IncidentPriority,
+          location: form.location?.trim() || 'Barangay 178, Camarin, Caloocan City',
+          description: form.description,
+          reported_by: 'Admin ECS',
+          date_reported: new Date().toISOString(),
+          status: 'Broadcasted' as IncidentStatus,
+        }
+
+        const { data: incData, error: incError } = await supabase
+          .from('incoming_incidents')
+          .insert(incidentPayload)
+          .select()
+          .single()
+
+        if (incError) {
+          console.warn('Creating incident entry for manual broadcast failed:', incError.message)
+          finalIncidentId = generatedIncId
+        } else if (incData) {
+          finalIncidentId = incData.incident_id
+        }
+      }
+
       const alertPayload = {
         id: crypto.randomUUID(),
         title: form.title,
@@ -61,7 +93,7 @@ export function useBroadcastAlert() {
         emergency_type: form.emergency_type,
         language: form.language,
         operator: form.operator || 'Administrator',
-        incident_id: incidentId,
+        incident_id: finalIncidentId,
       }
 
       const { data: alertData, error: alertError } = await supabase
@@ -77,7 +109,7 @@ export function useBroadcastAlert() {
 
       // Log to broadcast_logs
       const logPayload = {
-        incident_id: incidentId,
+        incident_id: finalIncidentId,
         alert_id: alertData.id,
         title: form.title,
         message: form.description,
@@ -100,6 +132,8 @@ export function useBroadcastAlert() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alerts'] })
       queryClient.invalidateQueries({ queryKey: ['broadcast-logs'] })
+      queryClient.invalidateQueries({ queryKey: ['incoming-incidents'] })
+      queryClient.invalidateQueries({ queryKey: ['received-communications'] })
     },
   })
 }

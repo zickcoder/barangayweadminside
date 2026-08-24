@@ -42,7 +42,7 @@ export interface AppSettings {
 
 // ─── New Admin Tables ──────────────────────────────────────────────────────────
 
-export type IncidentStatus = 'Pending' | 'Seen' | 'Broadcasted'
+export type IncidentStatus = 'Pending' | 'Seen' | 'Broadcasted' | 'Disregarded'
 export type IncidentPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
 export type IncidentType = 'FIRE' | 'FLOOD' | 'CRIME' | 'MEDICAL' | 'EARTHQUAKE' | 'OTHER'
 
@@ -96,6 +96,7 @@ export interface IncomingIncidentPayload {
 export interface BroadcastFormData {
   title: string
   description: string
+  location?: string
   priority: 'NORMAL' | 'WARNING' | 'EMERGENCY'
   emergency_type: IncidentType | 'OTHER'
   language: 'English' | 'Tagalog'
@@ -111,6 +112,12 @@ export interface AnalyticsSummary {
   totalAlerts: number
   pendingIncidents: number
 }
+
+// Filter Disregarded out of the queue in IncomingCommunications
+// const filtered = incidents.filter(inc => {
+//   if (inc.status === 'Broadcasted' || inc.status === 'Disregarded') return false
+//   return true
+// })
 
 export interface IncidentChartData {
   name: string

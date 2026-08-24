@@ -1,11 +1,11 @@
-import { useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
   Bot, Check, Wand2, Send, Trash2,
-  Smartphone, AlertTriangle, Eye, X, Loader2,
+  Smartphone, AlertTriangle, Eye, X, Loader2, CheckCircle2, MapPin,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,7 +23,8 @@ import type { BroadcastFormData, IncomingIncident } from '@/types'
 const schema = z.object({
   title: z.string().min(5, 'Title must be at least 5 characters'),
   description: z.string().min(5, 'Message must be at least 5 characters'),
-  priority: z.enum(['NORMAL', 'WARNING', 'EMERGENCY']),
+  location: z.string().optional(),
+  priority: z.enum(['WARNING', 'EMERGENCY']),
   emergency_type: z.enum(['FIRE', 'FLOOD', 'CRIME', 'MEDICAL', 'EARTHQUAKE', 'OTHER']),
   language: z.enum(['English', 'Tagalog']),
   channel: z.literal('Mobile Application'),
@@ -34,16 +35,16 @@ type FormValues = z.infer<typeof schema>
 
 export default function BroadcastAlerts() {
   const location = useLocation()
+  const navigate = useNavigate()
   const prefillIncident = location.state?.incident as IncomingIncident | undefined
   const prefilledMessage = location.state?.prefilledMessage as string | undefined
-  const isAiPreFilled = location.state?.isAiPreFilled as boolean | undefined
   const broadcastMutation = useBroadcastAlert()
 
   const [previewOpen, setPreviewOpen] = useState(false)
-  const [broadcastSuccess, setBroadcastSuccess] = useState(false)
+  const [successModalOpen, setSuccessModalOpen] = useState(false)
+  const [isBroadcasting, setIsBroadcasting] = useState(false)
 
-  // Right panel state
-  const [aiMessage, setAiMessage] = useState('')
+  // AI & Right panel state
   const [generatingAi, setGeneratingAi] = useState(false)
   const [selectedLanguage, setSelectedLanguage] = useState<'English' | 'Tagalog' | null>(null)
   const [aiError, setAiError] = useState('')
@@ -61,14 +62,46 @@ export default function BroadcastAlerts() {
     defaultValues: {
       title: prefillIncident ? `${prefillIncident.incident_type} Alert — ${prefillIncident.location}` : '',
       description: prefilledMessage ?? prefillIncident?.description ?? '',
-      priority: prefillIncident?.priority === 'CRITICAL' ? 'EMERGENCY' :
-                prefillIncident?.priority === 'HIGH' ? 'WARNING' : 'NORMAL',
+      location: prefillIncident?.location ?? '',
+      priority: (prefillIncident?.priority === 'CRITICAL' || prefillIncident?.priority === 'HIGH') ? 'EMERGENCY' : 'WARNING',
       emergency_type: (prefillIncident?.incident_type as FormValues['emergency_type']) ?? 'OTHER',
       language: 'English',
       channel: 'Mobile Application',
       operator: 'Administrator',
     },
   })
+
+  // Sync form values whenever navigation or state changes
+  useEffect(() => {
+    if (prefillIncident) {
+      reset({
+        title: `${prefillIncident.incident_type} Alert — ${prefillIncident.location}`,
+        description: prefilledMessage ?? prefillIncident.description ?? '',
+        location: prefillIncident.location ?? '',
+        priority: (prefillIncident.priority === 'CRITICAL' || prefillIncident.priority === 'HIGH') ? 'EMERGENCY' : 'WARNING',
+        emergency_type: (prefillIncident.incident_type as FormValues['emergency_type']) ?? 'OTHER',
+        language: 'English',
+        channel: 'Mobile Application',
+        operator: 'Administrator',
+      })
+      setPanelVisible(true)
+      setAiError('')
+    } else {
+      // Direct navigation (e.g. clicking Broadcast Alerts from sidebar) -> Clean refresh
+      reset({
+        title: '',
+        description: '',
+        location: '',
+        priority: 'WARNING',
+        emergency_type: 'OTHER',
+        language: 'English',
+        channel: 'Mobile Application',
+        operator: 'Administrator',
+      })
+      setPanelVisible(false)
+      setAiError('')
+    }
+  }, [location.key, location.state, prefillIncident?.id, prefilledMessage])
 
   const watchedValues = watch()
 
@@ -100,8 +133,8 @@ export default function BroadcastAlerts() {
       const text = lang === 'English'
         ? await generateEnglishAlert(ctx)
         : await generateTagalogAlert(ctx)
-      setAiMessage(text)
       setValue('language', lang)
+      setValue('description', text)
     } catch (err) {
       setAiError(err instanceof Error ? err.message : 'Failed to generate alert')
     } finally {
@@ -111,12 +144,34 @@ export default function BroadcastAlerts() {
   }
 
   const handleBroadcastClick = () => {
-    // Show the preview panel on the right and open the dialog
-    setPanelVisible(true)
     handleSubmit(() => setPreviewOpen(true))()
   }
 
+  const handleCloseSuccessModal = () => {
+    setSuccessModalOpen(false)
+
+    // Smooth transition: reset form after modal fade-out
+    setTimeout(() => {
+      reset({
+        title: '',
+        description: '',
+        location: '',
+        priority: 'WARNING',
+        emergency_type: 'OTHER',
+        language: 'English',
+        channel: 'Mobile Application',
+        operator: 'Administrator',
+      })
+      setPanelVisible(false)
+      // Clear location state history
+      if (typeof window !== 'undefined' && window.history?.replaceState) {
+        window.history.replaceState({}, document.title, window.location.pathname)
+      }
+    }, 200)
+  }
+
   const onBroadcastConfirm = async (data: FormValues) => {
+    setIsBroadcasting(true)
     try {
       await broadcastMutation.mutateAsync({
         form: data as BroadcastFormData,
@@ -127,20 +182,19 @@ export default function BroadcastAlerts() {
         await updateIncidentStatus(prefillIncident.id, 'Broadcasted')
       }
 
-      setPreviewOpen(false)
-      setBroadcastSuccess(true)
       setTimeout(() => {
-        setBroadcastSuccess(false)
-        reset()
-        setAiMessage('')
-        setPanelVisible(false)
-      }, 3000)
+        setIsBroadcasting(false)
+        setPreviewOpen(false)
+        setSuccessModalOpen(true)
+      }, 700)
     } catch (err) {
+      setIsBroadcasting(false)
       console.error('Broadcast failed:', err)
     }
   }
 
-  const defaultDescription = prefillIncident?.description ?? ''
+  const defaultDescription = (prefillIncident?.description ?? '').trim()
+  const showRightPanel = panelVisible && !!prefillIncident
 
   return (
     <div className="space-y-5">
@@ -155,7 +209,7 @@ export default function BroadcastAlerts() {
       {prefillIncident && (
         <div className="flex items-start gap-3 p-4 rounded-xl border border-accent/30 bg-accent/8">
           <AlertTriangle className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" />
-          <div>
+          <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-foreground">
               Pre-filled from Incident: <span className="font-mono text-accent">{prefillIncident.incident_id}</span>
             </p>
@@ -163,25 +217,20 @@ export default function BroadcastAlerts() {
               {prefillIncident.source_subsystem} · {prefillIncident.location}
             </p>
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-xs text-muted-foreground hover:text-foreground h-7 px-2"
+            onClick={() => {
+              navigate('/broadcast', { replace: true, state: null })
+            }}
+          >
+            Clear Prefill
+          </Button>
         </div>
       )}
 
-      {/* Broadcast Success */}
-      {broadcastSuccess && (
-        <div className="flex items-center gap-3 p-4 rounded-xl border border-primary/30 bg-primary/8 animate-fade-in">
-          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-            <Send className="w-4 h-4 text-primary" />
-          </div>
-          <div>
-            <p className="text-sm font-semibold text-primary">Alert Broadcasted Successfully!</p>
-            <p className="text-xs text-muted-foreground">
-              The emergency alert has been sent to all resident mobile applications via Supabase Realtime.
-            </p>
-          </div>
-        </div>
-      )}
-
-      <div className={`grid gap-5 ${panelVisible ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1 max-w-2xl mx-auto w-full'}`}>
+      <div className={`grid gap-5 ${showRightPanel ? 'grid-cols-1 lg:grid-cols-2' : 'grid-cols-1 max-w-2xl mx-auto w-full'}`}>
         {/* ─── LEFT: Broadcast Form ─── */}
         <Card>
           <CardHeader>
@@ -207,6 +256,25 @@ export default function BroadcastAlerts() {
                 )}
               </div>
 
+              {/* Incident Location (Only for Manual Broadcast) */}
+              {!prefillIncident && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="location" className="flex items-center justify-between">
+                    <span>Incident Location *</span>
+                    <span className="text-[10px] text-muted-foreground font-normal">e.g. Zone 3, Phase 2, Barangay 178</span>
+                  </Label>
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      id="location"
+                      placeholder="e.g. Zone 4, Camarin, Barangay 178"
+                      className="pl-9"
+                      {...register('location')}
+                    />
+                  </div>
+                </div>
+              )}
+
               {/* Description */}
               <div className="space-y-1.5">
                 <Label htmlFor="description">Alert Message *</Label>
@@ -219,16 +287,64 @@ export default function BroadcastAlerts() {
                 {errors.description && (
                   <p className="text-xs text-destructive">{errors.description.message}</p>
                 )}
+
+                {/* Summarize AI alert buttons below input box */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 px-0.5">
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Bot className="w-3.5 h-3.5 text-primary" />
+                    <span className="text-[11px] font-medium">Summarize AI Alert:</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={generatingAi || (!defaultDescription && !watchedValues.description?.trim())}
+                      onClick={() => handleGenerateAi('English')}
+                      className="h-7 px-2.5 text-[11px] font-medium gap-1 hover:border-primary/50 hover:bg-primary/5"
+                    >
+                      {generatingAi && selectedLanguage === 'English' ? (
+                        <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                      ) : (
+                        <Wand2 className="w-3 h-3 text-primary" />
+                      )}
+                      English
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={generatingAi || (!defaultDescription && !watchedValues.description?.trim())}
+                      onClick={() => handleGenerateAi('Tagalog')}
+                      className="h-7 px-2.5 text-[11px] font-medium gap-1 hover:border-primary/50 hover:bg-primary/5"
+                    >
+                      {generatingAi && selectedLanguage === 'Tagalog' ? (
+                        <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                      ) : (
+                        <Wand2 className="w-3 h-3 text-primary" />
+                      )}
+                      Tagalog
+                    </Button>
+                  </div>
+                </div>
+                {generatingAi && (
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground px-1 animate-pulse">
+                    <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                    <span>AI is summarizing alert in {selectedLanguage}...</span>
+                  </div>
+                )}
+                {aiError && (
+                  <p className="text-xs text-destructive bg-destructive/10 p-2 rounded-lg mt-1">{aiError}</p>
+                )}
               </div>
 
               {/* Priority + Emergency Type */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="priority">Priority *</Label>
+                  <Label htmlFor="priority">Alert Style *</Label>
                   <Select id="priority" {...register('priority')}>
-                    <option value="NORMAL">🟢 Normal</option>
-                    <option value="WARNING">🟡 Warning</option>
-                    <option value="EMERGENCY">🔴 Emergency</option>
+                    <option value="WARNING">🔔 Notification</option>
+                    <option value="EMERGENCY">🚨 Emergency Notification</option>
                   </Select>
                 </div>
                 <div className="space-y-1.5">
@@ -248,7 +364,7 @@ export default function BroadcastAlerts() {
               <div className="space-y-1.5">
                 <Label htmlFor="channel">
                   <Smartphone className="w-3.5 h-3.5 inline mr-1" />
-                  Channel
+                  Channels To Notify
                 </Label>
                 <Select id="channel" {...register('channel')} disabled>
                   <option value="Mobile Application">📱 Mobile Application</option>
@@ -270,7 +386,7 @@ export default function BroadcastAlerts() {
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => { reset(); setAiMessage(''); setPanelVisible(false) }}
+                  onClick={() => { reset(); setPanelVisible(false) }}
                   className="gap-2"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -296,148 +412,49 @@ export default function BroadcastAlerts() {
           </CardContent>
         </Card>
 
-        {/* ─── RIGHT: AI Summarized + Default Message ─── */}
-        {panelVisible && (
+        {/* ─── RIGHT: Default Incident Description Only ─── */}
+        {showRightPanel && (
           <div className="space-y-4">
-            {/* AI Summarized Message */}
-            {!isAiPreFilled && (
-              <Card className="border-primary/20">
-                <CardHeader className="pb-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center flex-shrink-0">
-                        <Bot className="w-4 h-4 text-primary" />
-                      </div>
-                      <div>
-                        <CardTitle className="text-sm">AI Summarized Message</CardTitle>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">Gemini-generated alert text</p>
-                      </div>
+            <Card className="border-border">
+              <CardHeader className="pb-3 border-b border-border bg-muted/20">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-muted flex items-center justify-center">
+                      <AlertTriangle className="w-3.5 h-3.5 text-muted-foreground" />
                     </div>
-                    <div className="grid grid-cols-2 sm:flex sm:flex-row gap-2 w-full sm:w-auto">
-                      <Button
-                        variant="default"
-                        size="sm"
-                        onClick={() => handleGenerateAi('English')}
-                        disabled={generatingAi || !isGeminiConfigured() || !(defaultDescription || watchedValues.description?.trim())}
-                        title={!(defaultDescription || watchedValues.description?.trim()) ? 'Enter a description or open from an incoming incident first' : undefined}
-                        className="gap-1.5 text-[11px] font-bold shadow-sm h-9 flex-1"
-                      >
-                        {generatingAi && selectedLanguage === 'English' ? (
-                          <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating...</>
-                        ) : (
-                          <><Wand2 className="w-3.5 h-3.5" /> English Alert</>
-                        )}
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => handleGenerateAi('Tagalog')}
-                        disabled={generatingAi || !isGeminiConfigured() || !(defaultDescription || watchedValues.description?.trim())}
-                        title={!(defaultDescription || watchedValues.description?.trim()) ? 'Enter a description or open from an incoming incident first' : undefined}
-                        className="gap-1.5 text-[11px] font-bold shadow-sm h-9 flex-1 border border-border"
-                      >
-                        {generatingAi && selectedLanguage === 'Tagalog' ? (
-                          <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating...</>
-                        ) : (
-                          <><Wand2 className="w-3.5 h-3.5" /> Tagalog Alert</>
-                        )}
-                      </Button>
+                    <div>
+                      <CardTitle className="text-sm font-semibold">Default Incident Description</CardTitle>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">Original report from incident</p>
                     </div>
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {!isGeminiConfigured() && (
-                    <div className="p-3 rounded-lg bg-accent/10 border border-accent/25 text-xs text-accent-foreground">
-                      <p className="font-semibold">⚠️ API Key Required</p>
-                      <p className="text-muted-foreground mt-0.5">
-                        Set <code className="bg-muted px-1 rounded">VITE_GEMINI_API_KEY</code> in your{' '}
-                        <code className="bg-muted px-1 rounded">.env</code> file to enable AI generation.
-                      </p>
-                    </div>
-                  )}
-                  {aiError && (
-                    <p className="text-xs text-destructive bg-destructive/10 p-2 rounded-lg">{aiError}</p>
-                  )}
-                  <div className="min-h-[100px] p-3 rounded-xl bg-background border border-border text-sm text-foreground leading-relaxed">
-                    {generatingAi ? (
-                      <div className="space-y-2">
-                        <div className="skeleton h-3 w-full rounded" />
-                        <div className="skeleton h-3 w-5/6 rounded" />
-                        <div className="skeleton h-3 w-4/5 rounded" />
-                      </div>
-                    ) : aiMessage ? (
-                      <p>{aiMessage}</p>
-                    ) : !(defaultDescription || watchedValues.description?.trim()) ? (
-                      <p className="text-muted-foreground italic text-xs">
-                        ⚠️ No incident description detected. Open this page from an incoming incident report, or type a description in the Alert Message field on the left first.
-                      </p>
-                    ) : (
-                      <p className="text-muted-foreground italic text-xs">
-                        Click "Summarize Alert" to rewrite the incident report into a broadcast-ready emergency alert.
-                      </p>
-                    )}
-                  </div>
-                  {aiMessage && (
-                    <Button
-                      size="sm"
-                      className="w-full gap-2"
-                      onClick={() => setValue('description', aiMessage)}
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      Use This Message
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Default Description */}
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
-                    <AlertTriangle className="w-4 h-4 text-muted-foreground" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-sm">Default Incident Description</CardTitle>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">Original report from incident</p>
-                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                    onClick={() => setPanelVisible(false)}
+                    title="Hide Panel"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="min-h-[100px] p-3 rounded-xl bg-background border border-border text-sm text-foreground leading-relaxed">
-                  {defaultDescription ? (
-                    <p>{defaultDescription}</p>
-                  ) : (
-                    <p className="text-muted-foreground italic text-xs">
-                      No default description available. Fill in the Alert Message field on the left.
-                    </p>
-                  )}
+              <CardContent className="p-4 space-y-3">
+                <div className="p-3.5 rounded-xl bg-muted/40 border border-border text-xs text-foreground leading-relaxed">
+                  {defaultDescription || <span className="text-muted-foreground italic">No default description available.</span>}
                 </div>
                 {defaultDescription && (
                   <Button
+                    type="button"
                     variant="outline"
                     size="sm"
-                    className="w-full gap-2"
+                    className="w-full gap-2 text-xs"
                     onClick={() => setValue('description', defaultDescription)}
                   >
-                    <Check className="w-3.5 h-3.5" />
-                    Use This Message
+                    <Check className="w-3.5 h-3.5" /> Use Original Description
                   </Button>
                 )}
               </CardContent>
             </Card>
-
-            {/* Close panel */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full gap-2 text-muted-foreground"
-              onClick={() => setPanelVisible(false)}
-            >
-              <X className="w-3.5 h-3.5" />
-              Hide Panel
-            </Button>
           </div>
         )}
       </div>
@@ -473,17 +490,58 @@ export default function BroadcastAlerts() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPreviewOpen(false)} className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setPreviewOpen(false)}
+              disabled={isBroadcasting || broadcastMutation.isPending}
+              className="gap-2"
+            >
               <X className="w-4 h-4" />
               Cancel Broadcast
             </Button>
             <Button
               onClick={handleSubmit(onBroadcastConfirm)}
-              disabled={broadcastMutation.isPending}
-              className="gap-2"
+              disabled={isBroadcasting || broadcastMutation.isPending}
+              className="gap-2 min-w-[140px]"
             >
-              <Send className="w-4 h-4" />
-              {broadcastMutation.isPending ? 'Broadcasting...' : 'Broadcast Now'}
+              {isBroadcasting || broadcastMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Broadcasting...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  Broadcast Now
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Broadcast Success Modal ─── */}
+      <Dialog open={successModalOpen} onOpenChange={(open) => { if (!open) handleCloseSuccessModal() }}>
+        <DialogContent className="max-w-sm text-center p-6 space-y-4 animate-in fade-in-0 zoom-in-95 duration-200">
+          <DialogHeader className="space-y-3">
+            <div className="mx-auto w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center animate-bounce">
+              <CheckCircle2 className="w-9 h-9 text-emerald-500" />
+            </div>
+            <DialogTitle className="text-xl font-extrabold text-foreground tracking-tight">
+              Broadcasted Successfully!
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground font-medium">
+              The emergency alert has been sent.
+            </p>
+          </DialogHeader>
+
+          <DialogFooter className="pt-2">
+            <Button
+              onClick={handleCloseSuccessModal}
+              className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg shadow-emerald-600/20 transition-all duration-300 hover:scale-[1.02] active:scale-95 gap-2 cursor-pointer"
+            >
+              <Check className="w-4 h-4" />
+              Done
             </Button>
           </DialogFooter>
         </DialogContent>

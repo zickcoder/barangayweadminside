@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
   Plus, Pencil, Trash2, Phone, Search, Shield,
-  Flame, Ambulance, Hospital, Building2, Star,
+  Flame, Ambulance, Hospital, Building2, Star, RefreshCw, AlertCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,16 +13,13 @@ import { Select } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { SkeletonCard } from '@/components/ui/skeleton'
-import { useHotlines, useCreateHotline, useUpdateHotline, useDeleteHotline } from '@/hooks/useHotlines'
+import { useHotlines, useCreateHotline, useUpdateHotline, useDeleteHotline, useSeedDefaultHotlines } from '@/hooks/useHotlines'
 import type { EmergencyHotline } from '@/types'
 
 const schema = z.object({
   name: z.string().min(2, 'Agency name required'),
   phone_number: z.string().min(3, 'Phone number required'),
   category: z.enum(['POLICE', 'FIRE', 'AMBULANCE', 'HOSPITAL', 'BARANGAY']),
-  description: z.string().optional(),
-  priority: z.number().min(1).max(99).optional(),
-  status: z.enum(['ACTIVE', 'INACTIVE']),
   is_local: z.boolean(),
 })
 
@@ -37,16 +34,18 @@ const CATEGORY_META = {
 } as const
 
 export default function EmergencyHotlines() {
-  const { data: hotlines = [], isLoading } = useHotlines()
+  const { data: hotlines = [], isLoading, error: queryError } = useHotlines()
   const createMutation = useCreateHotline()
   const updateMutation = useUpdateHotline()
   const deleteMutation = useDeleteHotline()
+  const seedMutation = useSeedDefaultHotlines()
 
   const [search, setSearch] = useState('')
   const [filterCategory, setFilterCategory] = useState('ALL')
   const [formOpen, setFormOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<EmergencyHotline | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<EmergencyHotline | null>(null)
+  const [actionError, setActionError] = useState('')
 
   const {
     register,
@@ -55,7 +54,7 @@ export default function EmergencyHotlines() {
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { status: 'ACTIVE', is_local: true, category: 'BARANGAY' },
+    defaultValues: { is_local: true, category: 'BARANGAY' },
   })
 
   const filteredHotlines = hotlines.filter(h => {
@@ -74,39 +73,63 @@ export default function EmergencyHotlines() {
   })).filter(g => filterCategory === 'ALL' ? true : g.category === filterCategory)
 
   const openCreate = () => {
+    setActionError('')
     setEditTarget(null)
-    reset({ status: 'ACTIVE', is_local: true, category: 'BARANGAY' })
+    reset({ is_local: true, category: 'BARANGAY' })
     setFormOpen(true)
   }
 
   const openEdit = (hotline: EmergencyHotline) => {
+    setActionError('')
     setEditTarget(hotline)
     reset({
       name: hotline.name,
       phone_number: hotline.phone_number,
       category: hotline.category as FormValues['category'],
-      description: hotline.description ?? '',
-      priority: hotline.priority ?? 1,
-      status: (hotline.status ?? 'ACTIVE') as FormValues['status'],
       is_local: hotline.is_local,
     })
     setFormOpen(true)
   }
 
   const onSubmit = async (data: FormValues) => {
-    if (editTarget) {
-      await updateMutation.mutateAsync({ id: editTarget.id, ...data })
-    } else {
-      await createMutation.mutateAsync(data as Omit<EmergencyHotline, 'id' | 'created_at'>)
+    setActionError('')
+    try {
+      if (editTarget) {
+        await updateMutation.mutateAsync({ id: editTarget.id, ...data })
+      } else {
+        await createMutation.mutateAsync(data as Omit<EmergencyHotline, 'id' | 'created_at'>)
+      }
+      setFormOpen(false)
+      reset()
+      setEditTarget(null)
+    } catch (err: any) {
+      console.error('Submit error:', err)
+      const msg = err?.message || (typeof err === 'string' ? err : 'Failed to save hotline')
+      setActionError(msg)
     }
-    setFormOpen(false)
-    reset()
   }
 
   const onDelete = async () => {
     if (deleteConfirm) {
-      await deleteMutation.mutateAsync(deleteConfirm.id)
-      setDeleteConfirm(null)
+      try {
+        await deleteMutation.mutateAsync(deleteConfirm.id)
+        setDeleteConfirm(null)
+      } catch (err: any) {
+        console.error('Delete error:', err)
+        const msg = err?.message || 'Failed to delete hotline'
+        setActionError(msg)
+      }
+    }
+  }
+
+  const handleSeedDefaults = async () => {
+    setActionError('')
+    try {
+      await seedMutation.mutateAsync()
+    } catch (err: any) {
+      console.error('Seed error:', err)
+      const msg = err?.message || (typeof err === 'string' ? err : 'Failed to seed default hotlines')
+      setActionError(msg)
     }
   }
 
@@ -119,11 +142,32 @@ export default function EmergencyHotlines() {
             Manage emergency contacts visible in the resident mobile application
           </p>
         </div>
-        <Button onClick={openCreate} className="gap-2 w-full sm:w-auto">
-          <Plus className="w-4 h-4" />
-          Add Hotline
-        </Button>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {hotlines.length === 0 && (
+            <Button
+              variant="outline"
+              onClick={handleSeedDefaults}
+              disabled={seedMutation.isPending}
+              className="gap-2 w-full sm:w-auto"
+            >
+              <RefreshCw className={`w-4 h-4 ${seedMutation.isPending ? 'animate-spin' : ''}`} />
+              {seedMutation.isPending ? 'Seeding...' : 'Load Default App Hotlines'}
+            </Button>
+          )}
+          <Button onClick={openCreate} className="gap-2 w-full sm:w-auto">
+            <Plus className="w-4 h-4" />
+            Add Hotline
+          </Button>
+        </div>
       </div>
+
+      {(queryError || actionError) && (
+        <div className="p-3 bg-destructive/10 border border-destructive/25 text-destructive rounded-lg flex items-center gap-2 text-xs font-medium">
+          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <span>{actionError || (queryError instanceof Error ? queryError.message : 'Error accessing hotline records in Supabase.')}</span>
+        </div>
+      )}
+
 
       {/* Filters */}
       <Card>
@@ -193,25 +237,42 @@ export default function EmergencyHotlines() {
             )
           })}
           {filteredHotlines.length === 0 && (
-            <div className="py-16 text-center">
-              <Phone className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
-              <p className="text-muted-foreground">No hotlines found</p>
-              <Button variant="outline" onClick={openCreate} className="mt-4 gap-2">
-                <Plus className="w-4 h-4" />
-                Add Your First Hotline
-              </Button>
+            <div className="py-16 text-center space-y-3">
+              <Phone className="w-10 h-10 text-muted-foreground/30 mx-auto mb-1" />
+              <p className="text-muted-foreground">No emergency hotlines found in database</p>
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <Button
+                  variant="default"
+                  onClick={handleSeedDefaults}
+                  disabled={seedMutation.isPending}
+                  className="gap-2"
+                >
+                  <RefreshCw className={`w-4 h-4 ${seedMutation.isPending ? 'animate-spin' : ''}`} />
+                  {seedMutation.isPending ? 'Seeding...' : 'Load Default App Hotlines'}
+                </Button>
+                <Button variant="outline" onClick={openCreate} className="gap-2">
+                  <Plus className="w-4 h-4" />
+                  Add Custom Hotline
+                </Button>
+              </div>
             </div>
           )}
         </div>
       )}
 
       {/* Create/Edit Dialog */}
-      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+      <Dialog open={formOpen} onOpenChange={(open) => { setFormOpen(open); if (!open) setEditTarget(null); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{editTarget ? 'Edit Hotline' : 'Add New Hotline'}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            {actionError && (
+              <div className="p-2.5 bg-destructive/10 border border-destructive/25 text-destructive rounded-lg flex items-center gap-2 text-xs font-medium">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{actionError}</span>
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label htmlFor="name">Agency Name *</Label>
               <Input id="name" placeholder="e.g. Barangay 178 Police" {...register('name')} />
@@ -222,36 +283,17 @@ export default function EmergencyHotlines() {
               <Input id="phone_number" placeholder="e.g. (02) 8961-1050 or 911" {...register('phone_number')} />
               {errors.phone_number && <p className="text-xs text-destructive">{errors.phone_number.message}</p>}
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="category">Category *</Label>
-                <Select id="category" {...register('category')}>
-                  {Object.entries(CATEGORY_META).map(([cat, { label }]) => (
-                    <option key={cat} value={cat}>{label}</option>
-                  ))}
-                </Select>
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="status">Status</Label>
-                <Select id="status" {...register('status')}>
-                  <option value="ACTIVE">Active</option>
-                  <option value="INACTIVE">Inactive</option>
-                </Select>
-              </div>
-            </div>
             <div className="space-y-1.5">
-              <Label htmlFor="description">Description</Label>
-              <Input id="description" placeholder="Optional description" {...register('description')} />
+              <Label htmlFor="category">Category *</Label>
+              <Select id="category" {...register('category')}>
+                {Object.entries(CATEGORY_META).map(([cat, { label }]) => (
+                  <option key={cat} value={cat}>{label}</option>
+                ))}
+              </Select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="priority">Display Priority</Label>
-                <Input id="priority" type="number" min={1} max={99} placeholder="1" {...register('priority', { valueAsNumber: true })} />
-              </div>
-              <div className="flex items-center gap-2 pt-5">
-                <input type="checkbox" id="is_local" {...register('is_local')} className="w-4 h-4 accent-primary" />
-                <Label htmlFor="is_local">Local Hotline</Label>
-              </div>
+            <div className="flex items-center gap-2 pt-2">
+              <input type="checkbox" id="is_local" {...register('is_local')} className="w-4 h-4 accent-primary" />
+              <Label htmlFor="is_local" className="cursor-pointer font-medium">Local Hotline (PCP / Barangay station)</Label>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setFormOpen(false)}>
@@ -316,16 +358,10 @@ function HotlineCard({
             <Phone className="w-3.5 h-3.5" />
             {hotline.phone_number}
           </div>
-          {hotline.description && (
-            <p className="text-xs text-muted-foreground mt-1.5">{hotline.description}</p>
-          )}
           <div className="flex items-center gap-2 mt-2">
-            <span className={hotline.status === 'INACTIVE' ? 'status-resolved' : 'status-broadcasted'}>
-              {hotline.status ?? 'ACTIVE'}
+            <span className={hotline.is_local ? 'status-broadcasted' : 'status-pending'}>
+              {hotline.is_local ? 'Local Hotline' : 'National Hotline'}
             </span>
-            {hotline.is_local && (
-              <span className="text-[10px] font-semibold text-muted-foreground">LOCAL</span>
-            )}
           </div>
         </div>
       </div>

@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import {
-  Eye, ArrowRight, RefreshCw, Filter,
+  Eye, RefreshCw, Filter,
   MapPin, Clock, Tag, Building2, FlaskConical,
-  Bot, Loader2, Wand2, Send, Check, Megaphone,
+  Bot, Loader2, Megaphone, Languages,
+  XCircle, Trash2, CheckSquare, Square, ArrowRight, Sparkles,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,9 +15,23 @@ import { SkeletonTable } from '@/components/ui/skeleton'
 import { StatusBadge, PriorityBadge } from '@/components/shared/StatusBadge'
 import { useIncidents, useUpdateIncidentStatus } from '@/hooks/useIncidents'
 import { seedDemoIncident } from '@/services/incidentApi'
-import { generateEnglishAlert, isGeminiConfigured } from '@/services/aiService'
+import { generateEnglishAlert, generateTagalogAlert, isGeminiConfigured } from '@/services/aiService'
 import { formatDate, incidentTypeLabel, incidentTypeColor } from '@/lib/utils'
 import type { IncomingIncident, IncidentStatus } from '@/types'
+
+// ─── Taglish detection helper ──────────────────────────────────────────────────
+function detectLanguage(text: string): 'English' | 'Tagalog' | 'Taglish' {
+  if (!text) return 'English'
+  const tagalogWords = /\b(ng|mga|ang|sa|nang|para|po|ako|ikaw|siya|kami|kayo|sila|nasunog|baha|sunog|sakolo|naaksidente|tulong|tumakas|dumating|naabisuhan|lugar|bahay|gusali|kalsada|pulis|bumbero|doktor|ospital|may|hindi|oo|ano|nasaan|kahapon|ngayon|bukas|namatay|nasugatan|nasalanta|init|ulan|bagyo|lindol|banta|peligro)\b/i
+  const englishWords = /\b(fire|flood|crime|medical|earthquake|emergency|incident|report|help|please|immediately|residents|vicinity|danger|warning|alert|police|ambulance|hospital|injured|dead|evacuate|stay|inside|outside|building|road|area|house)\b/i
+  const hasTagalog = tagalogWords.test(text)
+  const hasEnglish = englishWords.test(text)
+  if (hasTagalog && hasEnglish) return 'Taglish'
+  if (hasTagalog) return 'Tagalog'
+  return 'English'
+}
+
+type BroadcastModalLang = 'English' | 'Tagalog' | null
 
 export default function IncomingCommunications() {
   const navigate = useNavigate()
@@ -26,15 +41,29 @@ export default function IncomingCommunications() {
 
   const [search, setSearch] = useState('')
   const [filterType, setFilterType] = useState<string>('ALL')
-  const [selectedIncident, setSelectedIncident] = useState<IncomingIncident | null>(null)
+
+  // View-only dialog
+  const [viewIncident, setViewIncident] = useState<IncomingIncident | null>(null)
+
+  // Broadcast dialog (separate from view)
+  const [broadcastIncident, setBroadcastIncident] = useState<IncomingIncident | null>(null)
+  const [broadcastLang, setBroadcastLang] = useState<BroadcastModalLang>(null)
+  const [broadcastAiMessage, setBroadcastAiMessage] = useState('')
+  const [broadcastGenerating, setBroadcastGenerating] = useState(false)
+  const [broadcastAiError, setBroadcastAiError] = useState('')
+
   const [seeding, setSeeding] = useState(false)
   const [highlightId, setHighlightId] = useState<string | null>(null)
   const rowRefs = useRef<Record<string, HTMLTableRowElement | null>>({})
 
-  // AI state inside the detail dialog
-  const [aiMessage, setAiMessage] = useState('')
-  const [generatingAi, setGeneratingAi] = useState(false)
-  const [aiError, setAiError] = useState('')
+  // Select All / Bulk Disregard state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [selectMode, setSelectMode] = useState(false)
+
+  // Single disregard confirm state
+  const [disregardTarget, setDisregardTarget] = useState<IncomingIncident | null>(null)
+  const [bulkDisregardOpen, setBulkDisregardOpen] = useState(false)
+  const [disregarding, setDisregarding] = useState(false)
 
   // Listen to navigation state
   useEffect(() => {
@@ -42,9 +71,7 @@ export default function IncomingCommunications() {
       const hid = location.state.highlightId as string
       setHighlightId(hid)
       const found = incidents.find(i => i.id === hid)
-      if (found) {
-        handleView(found)
-      }
+      if (found) handleView(found)
       setTimeout(() => {
         rowRefs.current[hid]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
       }, 300)
@@ -52,17 +79,18 @@ export default function IncomingCommunications() {
     }
   }, [location.state, incidents])
 
-  // Reset AI state when dialog opens for a new incident
+  // Reset broadcast AI state when broadcast dialog changes incident
   useEffect(() => {
-    if (selectedIncident) {
-      setAiMessage('')
-      setAiError('')
+    if (broadcastIncident) {
+      setBroadcastAiMessage('')
+      setBroadcastAiError('')
+      setBroadcastLang(null)
     }
-  }, [selectedIncident?.id])
+  }, [broadcastIncident?.id])
 
-  // Hide Broadcasted incidents from the queue
+  // Hide Broadcasted and Disregarded incidents from the queue
   const filtered = incidents.filter(inc => {
-    if (inc.status === 'Broadcasted') return false
+    if (inc.status === 'Broadcasted' || inc.status === 'Disregarded') return false
     const matchSearch =
       !search ||
       inc.incident_id.toLowerCase().includes(search.toLowerCase()) ||
@@ -83,56 +111,116 @@ export default function IncomingCommunications() {
     }
   }
 
-  // View: mark as Seen if Pending, open dialog
+  // View-only: mark as Seen if Pending, open VIEW dialog only
   const handleView = (inc: IncomingIncident) => {
     if (inc.status === 'Pending') {
       updateStatus.mutate({ id: inc.id, status: 'Seen' })
-      setSelectedIncident({ ...inc, status: 'Seen' })
+      setViewIncident({ ...inc, status: 'Seen' })
     } else {
-      setSelectedIncident(inc)
+      setViewIncident(inc)
     }
   }
 
-  const handleGenerateAI = async (incident: IncomingIncident) => {
+  // Open Broadcast dialog (does NOT mark as seen — they haven't acted yet)
+  const handleOpenBroadcast = (inc: IncomingIncident) => {
+    setBroadcastIncident(inc)
+  }
+
+  // AI generate for broadcast modal
+  const handleBroadcastGenerateAI = async (lang: 'English' | 'Tagalog') => {
+    if (!broadcastIncident) return
     if (!isGeminiConfigured()) {
-      setAiError('Gemini API key not configured. Add VITE_GEMINI_API_KEY to your .env file.')
+      setBroadcastAiError('Gemini API key not configured. Add VITE_GEMINI_API_KEY to your .env file.')
       return
     }
-    if (!incident.description?.trim()) {
-      setAiError('No incident description found. Cannot summarize an empty report.')
+    if (!broadcastIncident.description?.trim()) {
+      setBroadcastAiError('No incident description found. Cannot summarize an empty report.')
       return
     }
-    setAiError('')
-    setGeneratingAi(true)
+    setBroadcastAiError('')
+    setBroadcastGenerating(true)
+    setBroadcastLang(lang)
+    setBroadcastAiMessage('')
     try {
-      const text = await generateEnglishAlert({
-        incidentType: incident.incident_type,
-        priority: incident.priority,
-        location: incident.location,
-        description: incident.description.trim(),  // always the raw incident description, trimmed
-      })
-      setAiMessage(text)
+      const ctx = {
+        incidentType: broadcastIncident.incident_type,
+        priority: broadcastIncident.priority,
+        location: broadcastIncident.location,
+        description: broadcastIncident.description.trim(),
+      }
+      const text = lang === 'English'
+        ? await generateEnglishAlert(ctx)
+        : await generateTagalogAlert(ctx)
+      setBroadcastAiMessage(text)
     } catch (err) {
-      setAiError(err instanceof Error ? err.message : 'Failed to generate alert')
+      setBroadcastAiError(err instanceof Error ? err.message : 'Failed to generate alert')
+      setBroadcastLang(null)
     } finally {
-      setGeneratingAi(false)
+      setBroadcastGenerating(false)
     }
   }
 
-  const handleDefaultBroadcast = (incident: IncomingIncident) => {
-    setSelectedIncident(null)
-    navigate('/broadcast', { state: { incident } })
-  }
-
-  const handleAiBroadcast = (incident: IncomingIncident) => {
-    setSelectedIncident(null)
+  // Proceed to broadcast page
+  const handleProceedBroadcast = (useAi: boolean) => {
+    if (!broadcastIncident) return
+    setBroadcastIncident(null)
     navigate('/broadcast', {
       state: {
-        incident,
-        prefilledMessage: aiMessage,
-        isAiPreFilled: true,
+        incident: broadcastIncident,
+        prefilledMessage: useAi && broadcastAiMessage ? broadcastAiMessage : broadcastIncident.description,
+        isAiPreFilled: useAi && !!broadcastAiMessage,
       },
     })
+  }
+
+  // Disregard handlers
+  const handleDisregardConfirm = async () => {
+    if (!disregardTarget) return
+    setDisregarding(true)
+    try {
+      await updateStatus.mutateAsync({ id: disregardTarget.id, status: 'Disregarded' as IncidentStatus })
+      setDisregardTarget(null)
+      await refetch()
+    } finally {
+      setDisregarding(false)
+    }
+  }
+
+  const handleBulkDisregardConfirm = async () => {
+    setDisregarding(true)
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map(id => updateStatus.mutateAsync({ id, status: 'Disregarded' as IncidentStatus }))
+      )
+      setSelectedIds(new Set())
+      setSelectMode(false)
+      setBulkDisregardOpen(false)
+      await refetch()
+    } finally {
+      setDisregarding(false)
+    }
+  }
+
+  const toggleSelectMode = () => {
+    setSelectMode(!selectMode)
+    setSelectedIds(new Set())
+  }
+
+  const toggleSelectId = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filtered.map(i => i.id)))
+    }
   }
 
   const pendingCount = incidents.filter(i => i.status === 'Pending').length
@@ -152,7 +240,27 @@ export default function IncomingCommunications() {
             {incidents.length} total
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {selectMode && selectedIds.size > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setBulkDisregardOpen(true)}
+              className="gap-2 animate-fade-in"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              Disregard Selected ({selectedIds.size})
+            </Button>
+          )}
+          <Button
+            variant={selectMode ? 'secondary' : 'outline'}
+            size="sm"
+            onClick={toggleSelectMode}
+            className="gap-2"
+          >
+            {selectMode ? <XCircle className="w-3.5 h-3.5" /> : <CheckSquare className="w-3.5 h-3.5" />}
+            {selectMode ? 'Cancel Select' : 'Select All'}
+          </Button>
           <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
             <RefreshCw className="w-3.5 h-3.5" />
             Refresh
@@ -268,7 +376,7 @@ export default function IncomingCommunications() {
                       </Button>
                       <Button
                         size="sm"
-                        onClick={() => navigate('/broadcast', { state: { incident: inc } })}
+                        onClick={() => handleOpenBroadcast(inc)}
                         className="w-full gap-1.5 text-xs h-8"
                       >
                         <Megaphone className="w-3.5 h-3.5" />
@@ -284,6 +392,19 @@ export default function IncomingCommunications() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-border">
+                      {selectMode && (
+                        <th className="px-4 py-3 w-10">
+                          <button
+                            onClick={toggleSelectAll}
+                            className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                          >
+                            {selectedIds.size === filtered.length && filtered.length > 0
+                              ? <CheckSquare className="w-4 h-4 text-primary" />
+                              : <Square className="w-4 h-4" />
+                            }
+                          </button>
+                        </th>
+                      )}
                       {['Incident ID', 'Source', 'Type', 'Priority', 'Location', 'Received', 'Status', 'Actions'].map(h => (
                         <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">{h}</th>
                       ))}
@@ -295,13 +416,28 @@ export default function IncomingCommunications() {
                         key={inc.id}
                         ref={el => { rowRefs.current[inc.id] = el }}
                         className={`border-b border-border last:border-0 transition-all duration-300 ${
-                          highlightId === inc.id
+                          selectedIds.has(inc.id)
+                            ? 'bg-destructive/5 ring-1 ring-destructive/20 ring-inset'
+                            : highlightId === inc.id
                             ? 'bg-primary/10 ring-2 ring-primary/40 ring-inset'
                             : inc.status === 'Pending'
                             ? 'bg-destructive/3 hover:bg-destructive/6'
                             : 'table-row-hover'
                         }`}
                       >
+                        {selectMode && (
+                          <td className="px-4 py-3">
+                            <button
+                              onClick={() => toggleSelectId(inc.id)}
+                              className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                            >
+                              {selectedIds.has(inc.id)
+                                ? <CheckSquare className="w-4 h-4 text-destructive" />
+                                : <Square className="w-4 h-4" />
+                              }
+                            </button>
+                          </td>
+                        )}
                         <td className="px-4 py-3">
                           <span className="font-mono text-xs text-primary font-semibold">{inc.incident_id}</span>
                         </td>
@@ -337,6 +473,7 @@ export default function IncomingCommunications() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1.5">
+                            {/* VIEW ONLY - no actions inside */}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -346,13 +483,23 @@ export default function IncomingCommunications() {
                               <Eye className="w-3.5 h-3.5" />
                               View
                             </Button>
+                            {/* BROADCAST - opens broadcast dialog */}
                             <Button
                               size="sm"
-                              onClick={() => navigate('/broadcast', { state: { incident: inc } })}
+                              onClick={() => handleOpenBroadcast(inc)}
                               className="gap-1.5 text-xs h-7 px-2.5"
                             >
                               <Megaphone className="w-3.5 h-3.5" />
-                              Broadcast Alert
+                              Broadcast
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setDisregardTarget(inc)}
+                              className="gap-1.5 text-xs h-7 px-2.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                              Disregard
                             </Button>
                           </div>
                         </td>
@@ -366,21 +513,21 @@ export default function IncomingCommunications() {
         </CardContent>
       </Card>
 
-      {/* Detail Dialog */}
-      <Dialog open={!!selectedIncident} onOpenChange={(open) => !open && setSelectedIncident(null)}>
-        {selectedIncident && (
+      {/* ─── VIEW-ONLY Detail Dialog ─────────────────────────────────────────── */}
+      <Dialog open={!!viewIncident} onOpenChange={(open) => !open && setViewIncident(null)}>
+        {viewIncident && (
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <div className="flex items-center gap-2 mb-1">
                 <div
                   className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold"
-                  style={{ background: incidentTypeColor(selectedIncident.incident_type) }}
+                  style={{ background: incidentTypeColor(viewIncident.incident_type) }}
                 >
-                  {selectedIncident.incident_type.charAt(0)}
+                  {viewIncident.incident_type.charAt(0)}
                 </div>
                 <div>
                   <DialogTitle>Incident Details</DialogTitle>
-                  <p className="text-xs text-muted-foreground font-mono mt-0.5">{selectedIncident.incident_id}</p>
+                  <p className="text-xs text-muted-foreground font-mono mt-0.5">{viewIncident.incident_id}</p>
                 </div>
               </div>
             </DialogHeader>
@@ -388,44 +535,278 @@ export default function IncomingCommunications() {
             <div className="space-y-4">
               {/* Badges */}
               <div className="flex gap-2 flex-wrap">
-                <StatusBadge status={selectedIncident.status} />
-                <PriorityBadge priority={selectedIncident.priority} />
+                <StatusBadge status={viewIncident.status} />
+                <PriorityBadge priority={viewIncident.priority} />
                 <span
                   className="text-xs font-semibold px-2.5 py-0.5 rounded-full"
                   style={{
-                    background: `${incidentTypeColor(selectedIncident.incident_type)}18`,
-                    color: incidentTypeColor(selectedIncident.incident_type),
+                    background: `${incidentTypeColor(viewIncident.incident_type)}18`,
+                    color: incidentTypeColor(viewIncident.incident_type),
                   }}
                 >
-                  {incidentTypeLabel(selectedIncident.incident_type)}
+                  {incidentTypeLabel(viewIncident.incident_type)}
                 </span>
               </div>
 
               {/* Detail Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <DetailRow icon={<Building2 className="w-3.5 h-3.5" />} label="Source" value={selectedIncident.source_subsystem} />
-                <DetailRow icon={<Tag className="w-3.5 h-3.5" />} label="Reported By" value={selectedIncident.reported_by ?? 'Unknown'} />
-                <DetailRow icon={<MapPin className="w-3.5 h-3.5" />} label="Location" value={selectedIncident.location} />
-                <DetailRow icon={<Clock className="w-3.5 h-3.5" />} label="Date Reported" value={formatDate(selectedIncident.date_reported)} />
+                <DetailRow icon={<Building2 className="w-3.5 h-3.5" />} label="Source" value={viewIncident.source_subsystem} />
+                <DetailRow icon={<Tag className="w-3.5 h-3.5" />} label="Reported By" value={viewIncident.reported_by ?? 'Unknown'} />
+                <DetailRow icon={<MapPin className="w-3.5 h-3.5" />} label="Location" value={viewIncident.location} />
+                <DetailRow icon={<Clock className="w-3.5 h-3.5" />} label="Date Reported" value={formatDate(viewIncident.date_reported)} />
               </div>
 
-              {/* Incident Description — this is what AI will summarize */}
+              {/* Description */}
               <div>
                 <p className="text-xs font-semibold text-muted-foreground mb-1.5 flex items-center gap-1.5">
                   <Tag className="w-3 h-3" />
                   Incident Description
                 </p>
                 <div className="p-3 bg-muted/50 rounded-lg text-sm text-foreground leading-relaxed border border-border">
-                  {selectedIncident.description}
+                  {viewIncident.description || <span className="text-muted-foreground italic">No description provided.</span>}
                 </div>
               </div>
-              </div>
+            </div>
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => setSelectedIncident(null)}>Close</Button>
+              <Button variant="outline" onClick={() => setViewIncident(null)}>Close</Button>
             </DialogFooter>
           </DialogContent>
         )}
+      </Dialog>
+
+      {/* ─── BROADCAST Dialog with AI Summarization ──────────────────────────── */}
+      <Dialog open={!!broadcastIncident} onOpenChange={(open) => !open && setBroadcastIncident(null)}>
+        {broadcastIncident && (
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <div className="flex items-center gap-2 mb-1">
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold"
+                  style={{ background: incidentTypeColor(broadcastIncident.incident_type) }}
+                >
+                  <Megaphone className="w-4 h-4" />
+                </div>
+                <div>
+                  <DialogTitle className="flex items-center gap-2">
+                    Broadcast Incident
+                    <span className="text-xs font-normal text-muted-foreground font-mono">{broadcastIncident.incident_id}</span>
+                  </DialogTitle>
+                  <p className="text-xs text-muted-foreground mt-0.5">Review details and choose how to summarize the alert message.</p>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              {/* Badges */}
+              <div className="flex gap-2 flex-wrap items-center">
+                <PriorityBadge priority={broadcastIncident.priority} />
+                <span
+                  className="text-xs font-semibold px-2.5 py-0.5 rounded-full"
+                  style={{
+                    background: `${incidentTypeColor(broadcastIncident.incident_type)}18`,
+                    color: incidentTypeColor(broadcastIncident.incident_type),
+                  }}
+                >
+                  {incidentTypeLabel(broadcastIncident.incident_type)}
+                </span>
+                {/* Taglish/Language detection badge */}
+                {broadcastIncident.description && (() => {
+                  const lang = detectLanguage(broadcastIncident.description)
+                  const colors: Record<string, string> = {
+                    'Taglish': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+                    'Tagalog': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                    'English': 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+                  }
+                  return (
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 ${colors[lang]}`}>
+                      <Languages className="w-3 h-3" />
+                      {lang} Detected
+                    </span>
+                  )
+                })()}
+              </div>
+
+              {/* Detail Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <DetailRow icon={<MapPin className="w-3.5 h-3.5" />} label="Location" value={broadcastIncident.location} />
+                <DetailRow icon={<Clock className="w-3.5 h-3.5" />} label="Date Reported" value={formatDate(broadcastIncident.date_reported)} />
+                <DetailRow icon={<Building2 className="w-3.5 h-3.5" />} label="Source" value={broadcastIncident.source_subsystem} />
+                <DetailRow icon={<Tag className="w-3.5 h-3.5" />} label="Reported By" value={broadcastIncident.reported_by ?? 'Unknown'} />
+              </div>
+
+              {/* Original Description */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                  <Tag className="w-3 h-3" />
+                  Original Incident Description
+                </p>
+                <div className="p-3 bg-muted/50 rounded-lg text-sm text-foreground leading-relaxed border border-border">
+                  {broadcastIncident.description || <span className="text-muted-foreground italic">No description provided.</span>}
+                </div>
+              </div>
+
+              {/* AI Summarization Section */}
+              <div className="rounded-xl border border-primary/20 bg-primary/4 overflow-hidden">
+                <div className="px-4 py-3 border-b border-primary/15 flex items-center gap-2">
+                  <Bot className="w-4 h-4 text-primary" />
+                  <p className="text-xs font-semibold text-foreground">AI Summarize Alert Message</p>
+                  <span className="ml-auto text-[10px] text-muted-foreground">Choose a language to generate</span>
+                </div>
+                <div className="p-4 space-y-3">
+                  {/* Language buttons */}
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      variant={broadcastLang === 'English' ? 'default' : 'outline'}
+                      size="sm"
+                      disabled={broadcastGenerating}
+                      onClick={() => handleBroadcastGenerateAI('English')}
+                      className="gap-2 text-xs"
+                    >
+                      {broadcastGenerating && broadcastLang === 'English'
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Sparkles className="w-3.5 h-3.5" />}
+                      🇺🇸 English
+                    </Button>
+                    <Button
+                      variant={broadcastLang === 'Tagalog' ? 'default' : 'outline'}
+                      size="sm"
+                      disabled={broadcastGenerating}
+                      onClick={() => handleBroadcastGenerateAI('Tagalog')}
+                      className="gap-2 text-xs"
+                    >
+                      {broadcastGenerating && broadcastLang === 'Tagalog'
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Sparkles className="w-3.5 h-3.5" />}
+                      🇵🇭 Tagalog
+                    </Button>
+                  </div>
+
+                  {/* Generating spinner */}
+                  {broadcastGenerating && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground animate-pulse">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                      <span>AI is generating your {broadcastLang} summary...</span>
+                    </div>
+                  )}
+
+                  {/* Error */}
+                  {broadcastAiError && !broadcastGenerating && (
+                    <div className="p-3 rounded-lg bg-destructive/8 border border-destructive/20 text-xs text-destructive">
+                      {broadcastAiError}
+                    </div>
+                  )}
+
+                  {/* Preview of generated message */}
+                  {broadcastAiMessage && !broadcastGenerating && (
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-bold text-primary uppercase tracking-wider flex items-center gap-1">
+                          <Sparkles className="w-3 h-3" />
+                          AI Generated Preview ({broadcastLang})
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">You can regenerate by clicking a language button again</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-card border border-primary/20 text-sm text-foreground leading-relaxed shadow-inner">
+                        {broadcastAiMessage}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <DialogFooter className="flex-row items-center justify-between gap-2">
+              <Button variant="outline" onClick={() => setBroadcastIncident(null)}>Cancel</Button>
+              <div className="flex items-center gap-2">
+                {/* Skip button */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleProceedBroadcast(false)}
+                  className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <ArrowRight className="w-3.5 h-3.5" />
+                  Skip
+                </Button>
+                {/* Proceed with AI summary (only enabled when AI message exists) */}
+                <Button
+                  size="sm"
+                  disabled={!broadcastAiMessage || broadcastGenerating}
+                  onClick={() => handleProceedBroadcast(true)}
+                  className="gap-1.5 text-xs font-bold"
+                >
+                  <Megaphone className="w-3.5 h-3.5" />
+                  Proceed with AI Summary →
+                </Button>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+
+      {/* Single Disregard Confirm Dialog */}
+      <Dialog open={!!disregardTarget} onOpenChange={(open) => !open && setDisregardTarget(null)}>
+        {disregardTarget && (
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <div className="flex items-center gap-3 mb-1">
+                <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center flex-shrink-0">
+                  <XCircle className="w-5 h-5 text-destructive" />
+                </div>
+                <div>
+                  <DialogTitle>Disregard Incident?</DialogTitle>
+                  <p className="text-xs text-muted-foreground font-mono mt-0.5">{disregardTarget.incident_id}</p>
+                </div>
+              </div>
+            </DialogHeader>
+            <div className="py-2">
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                This incident will be marked as <span className="font-semibold text-foreground">Disregarded</span> and removed from the active queue. It will still be accessible in Communication Logs.
+              </p>
+              <div className="mt-3 p-3 rounded-lg bg-muted/40 border border-border">
+                <p className="text-xs font-semibold text-foreground">{disregardTarget.incident_type} — {disregardTarget.location}</p>
+                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{disregardTarget.description}</p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setDisregardTarget(null)} disabled={disregarding}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDisregardConfirm} disabled={disregarding} className="gap-2">
+                {disregarding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
+                Disregard
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
+
+      {/* Bulk Disregard Confirm Dialog */}
+      <Dialog open={bulkDisregardOpen} onOpenChange={(open) => !open && setBulkDisregardOpen(false)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center flex-shrink-0">
+                <Trash2 className="w-5 h-5 text-destructive" />
+              </div>
+              <div>
+                <DialogTitle>Disregard {selectedIds.size} Incidents?</DialogTitle>
+                <p className="text-xs text-muted-foreground mt-0.5">This action will disregard all selected incidents.</p>
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="py-2">
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              All <span className="font-semibold text-foreground">{selectedIds.size} selected incidents</span> will be marked as Disregarded and removed from the active queue. They will still be visible in Communication Logs.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkDisregardOpen(false)} disabled={disregarding}>Cancel</Button>
+            <Button variant="destructive" onClick={handleBulkDisregardConfirm} disabled={disregarding} className="gap-2">
+              {disregarding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+              Disregard All Selected
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </div>
   )

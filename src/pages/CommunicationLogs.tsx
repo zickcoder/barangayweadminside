@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
-  Download, Search, Filter, Radio, Send,
+  Search, Filter, Radio, Send,
   X, MapPin, Clock, Tag, Building2, User,
   Megaphone, FileText,
 } from 'lucide-react'
@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { SkeletonTable } from '@/components/ui/skeleton'
 import { StatusBadge, PriorityBadge, AlertPriorityBadge } from '@/components/shared/StatusBadge'
 import { useBroadcastLogs, useReceivedCommunications } from '@/hooks/useBroadcastLogs'
-import { formatDate, incidentTypeLabel, incidentTypeColor, downloadCSV } from '@/lib/utils'
+import { formatDate, incidentTypeLabel, incidentTypeColor } from '@/lib/utils'
 import { detectAndTranslateIncident, isGeminiConfigured } from '@/services/aiService'
 import type { DetectionAndTranslation } from '@/services/aiService'
 import type { IncomingIncident, BroadcastLog } from '@/types'
@@ -140,33 +140,6 @@ export default function CommunicationLogs() {
       return -diff
     })
 
-  const handleExportReceived = () => {
-    downloadCSV(
-      filteredReceived.map(r => ({
-        incident_id: r.incident_id,
-        source: r.source_subsystem,
-        type: r.incident_type,
-        priority: r.priority,
-        location: r.location,
-        received_time: formatDate(r.created_at),
-      })),
-      'received_communications.csv'
-    )
-  }
-
-  const handleExportBroadcasts = () => {
-    downloadCSV(
-      filteredBroadcasts.map(b => ({
-        broadcast_id: b.id,
-        incident_id: b.incident_id ?? '',
-        title: b.title,
-        operator: b.operator,
-        broadcast_time: formatDate(b.broadcast_time),
-      })),
-      'broadcast_history.csv'
-    )
-  }
-
   return (
     <div className="space-y-5">
       <div>
@@ -201,7 +174,7 @@ export default function CommunicationLogs() {
           }`}
         >
           <Send className="w-4 h-4 flex-shrink-0" />
-          <span>Broadcast History</span>
+          <span>Broadcast Alerts Log</span>
           <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-muted-foreground/20">
             {broadcastLogs.length}
           </span>
@@ -234,15 +207,6 @@ export default function CommunicationLogs() {
               <option value="MONTH">This Month</option>
               <option value="YEAR">This Year</option>
             </Select>
-            <Button
-              variant="outline"
-              size="default"
-              onClick={activeTab === 'received' ? handleExportReceived : handleExportBroadcasts}
-              className="gap-2 w-full sm:w-auto"
-            >
-              <Download className="w-4 h-4" />
-              Export CSV
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -401,7 +365,7 @@ export default function CommunicationLogs() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-border">
-                        {['Incident ID', 'Title', 'Priority', 'Operator', 'Broadcast Time', ''].map(h => (
+                        {['Incident ID', 'Title', 'Alert Style', 'Operator', 'Broadcast Time', ''].map(h => (
                           <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">{h}</th>
                         ))}
                       </tr>
