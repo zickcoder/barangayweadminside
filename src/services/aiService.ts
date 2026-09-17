@@ -64,6 +64,27 @@ Mga Instruksyon para sa Mensahe ng Alerto:
 Mensahe ng Alerto:
 `.trim()
 
+const TAGLISH_PROMPT = (ctx: IncidentContext) => `
+You are the official emergency communications officer for Barangay 178, Camarin, Caloocan City, Philippines.
+
+Your task is to rewrite the raw incident description into an urgent, clear, and very natural Taglish (conversational English and Tagalog mix) Emergency Alert Message for public broadcast to residents. Do NOT write an essay or long summary.
+
+Incident Details:
+- Incident Type: ${ctx.incidentType}
+- Priority Level: ${ctx.priority}
+- Incident Location: ${ctx.location}
+- Raw Incident Description: ${ctx.description}
+
+Instructions for the Alert Message:
+1. Clearly identify the situation and exact location in natural everyday Metro Manila Taglish.
+2. Give clear, urgent instructions for residents (hal. mag-ingat, mag-evacuate kung kailangan, umiwas sa area, tumawag sa hotline).
+3. Keep it brief, calm, authoritative, and strictly under 3 sentences.
+4. Use simple, conversational words that any resident will immediately understand.
+5. Output ONLY the final broadcast message. Do not include quotes, intros, or conversational filler.
+
+Taglish Emergency Alert:
+`.trim()
+
 export function getActiveAiVersion(): 'v1' | 'v2' {
   if (typeof window !== 'undefined') {
     return (localStorage.getItem('barangay_ai_version') as 'v1' | 'v2') || 'v2'
@@ -136,6 +157,10 @@ export async function generateEnglishAlert(ctx: IncidentContext): Promise<string
 
 export async function generateTagalogAlert(ctx: IncidentContext): Promise<string> {
   return callGemini(TAGALOG_PROMPT(ctx))
+}
+
+export async function generateTaglishAlert(ctx: IncidentContext): Promise<string> {
+  return callGemini(TAGLISH_PROMPT(ctx))
 }
 
 export async function generateBothAlerts(ctx: IncidentContext): Promise<GeneratedAlert> {

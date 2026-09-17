@@ -25,6 +25,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 const MAX_FAILED_ATTEMPTS = 3
+const SESSION_TIMEOUT_MS = 15 * 60 * 1000 // 15 minutes of inactivity timeout
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
@@ -61,6 +62,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isDemoAuth, setIsDemoAuth] = useState<boolean>(() => {
     return localStorage.getItem('admin_demo_auth') === 'true'
   })
+
+  const isAuthenticated = !!session || isDemoAuth
+
+  // 15-Minute Inactivity Session Timeout
+  useEffect(() => {
+    if (!isAuthenticated) return
+
+    const recordActivity = () => {
+      localStorage.setItem('admin_last_activity_ts', Date.now().toString())
+    }
+
+    if (!localStorage.getItem('admin_last_activity_ts')) {
+      recordActivity()
+    }
+
+    const activityEvents = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart']
+    let lastThrottled = Date.now()
+
+    const handleUserActivity = () => {
+      const now = Date.now()
+      if (now - lastThrottled > 5000) {
+        lastThrottled = now
+        recordActivity()
+      }
+    }
+
+    activityEvents.forEach((evt) => {
+      window.addEventListener(evt, handleUserActivity, { passive: true })
+    })
+
+    const intervalId = setInterval(() => {
+      const saved = localStorage.getItem('admin_last_activity_ts')
+      const lastActive = saved ? parseInt(saved, 10) : Date.now()
+      if (Date.now() - lastActive >= SESSION_TIMEOUT_MS) {
+        localStorage.removeItem('admin_last_activity_ts')
+        logout()
+      }
+    }, 3000)
+
+    return () => {
+      activityEvents.forEach((evt) => {
+        window.removeEventListener(evt, handleUserActivity)
+      })
+      clearInterval(intervalId)
+    }
+  }, [isAuthenticated])
 
   // Periodically check if lockout timer has expired
   useEffect(() => {
@@ -175,6 +222,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (cleanToken === activeOtpCode) {
       setIsDemoAuth(true)
       localStorage.setItem('admin_demo_auth', 'true')
+      localStorage.setItem('admin_last_activity_ts', Date.now().toString())
+      resetAttempts()
+      return { success: true }
+    }
+
+    // Local dev override (active ONLY in local `npm run dev`, never in production)
+    if (import.meta.env.DEV && cleanToken === '123456') {
+      setIsDemoAuth(true)
+      localStorage.setItem('admin_demo_auth', 'true')
+      localStorage.setItem('admin_last_activity_ts', Date.now().toString())
       resetAttempts()
       return { success: true }
     }
@@ -192,6 +249,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(data.user)
         setIsDemoAuth(true)
         localStorage.setItem('admin_demo_auth', 'true')
+        localStorage.setItem('admin_last_activity_ts', Date.now().toString())
         resetAttempts()
         return { success: true }
       }
@@ -210,17 +268,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: inputEmail, password: inputPassword }),
       })
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || ''
+      if (res.ok && contentType.includes('application/json')) {
         const data = await res.json()
         if (data.valid) {
           return { success: true }
         }
       }
     } catch {
-      // Network/local fallback
+      // Local or offline fallback
     }
 
-    // 2. Check Supabase Auth
+    // 2. Local Development fallback (active ONLY in local `npm run dev`, never in production builds)
+    if (import.meta.env.DEV) {
+      const cleanEmail = inputEmail.trim().toLowerCase()
+      const cleanPassword = inputPassword.trim()
+      const allowedEmails = [
+        'admin@barangay178.gov.ph',
+        'thacoj@gmail.com',
+        adminEmail.toLowerCase(),
+      ]
+      if (allowedEmails.includes(cleanEmail) && cleanPassword === 'admin123!') {
+        return { success: true }
+      }
+    }
+
+    // 3. Check Supabase Auth
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email: inputEmail,
@@ -246,10 +319,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null)
       setIsDemoAuth(false)
       localStorage.removeItem('admin_demo_auth')
+      localStorage.removeItem('admin_last_activity_ts')
     }
   }
-
-  const isAuthenticated = !!session || isDemoAuth
 
   return (
     <AuthContext.Provider

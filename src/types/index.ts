@@ -67,7 +67,7 @@ export interface BroadcastLog {
   alert_id?: string
   title: string
   message: string
-  language: 'English' | 'Tagalog'
+  language: 'English' | 'Tagalog' | 'Taglish' | string
   operator: string
   priority: string
   emergency_type: string
@@ -99,7 +99,7 @@ export interface BroadcastFormData {
   location?: string
   priority: 'NORMAL' | 'WARNING' | 'EMERGENCY'
   emergency_type: IncidentType | 'OTHER'
-  language: 'English' | 'Tagalog'
+  language: 'English' | 'Tagalog' | 'Taglish'
   channel: 'Mobile Application'
   operator: string
 }

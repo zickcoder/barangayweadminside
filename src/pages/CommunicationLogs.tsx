@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
-  Search, Filter, Radio, Send,
+  Search, Radio, Send,
   X, MapPin, Clock, Tag, Building2, User,
-  Megaphone, FileText,
+  Megaphone, FileText, ChevronLeft, ChevronRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -26,6 +26,12 @@ export default function CommunicationLogs() {
   const [search, setSearch] = useState('')
   const [filterDate, setFilterDate] = useState<string>('ALL')
   const [filterType, setFilterType] = useState<string>('ALL')
+  const [filterNotifType, setFilterNotifType] = useState<string>('ALL')
+
+  // Pagination state — resets to page 1 on any filter/tab change
+  const PAGE_SIZE = 10
+  const [receivedPage, setReceivedPage] = useState(1)
+  const [broadcastPage, setBroadcastPage] = useState(1)
 
   // Detail dialog state
   const [viewedIncident, setViewedIncident] = useState<IncomingIncident | null>(null)
@@ -41,13 +47,10 @@ export default function CommunicationLogs() {
       setTranslationResult(null)
       setTranslationError('')
 
-      // Skip translating if description is blank or missing
-      if (!viewedIncident.description?.trim()) {
-        return
-      }
+      if (!viewedIncident.description?.trim()) return
 
       if (!isGeminiConfigured()) {
-        setTranslationError('Gemini API key is not configured. Add VITE_GEMINI_API_KEY to your .env file to enable translation.')
+        setTranslationError('Gemini API key is not configured.')
         return
       }
 
@@ -76,8 +79,13 @@ export default function CommunicationLogs() {
       if (location.state.tab) setActiveTab(location.state.tab as ActiveTab)
       if (location.state.filterType) setFilterType(location.state.filterType as string)
       if (location.state.filterDate) setFilterDate(location.state.filterDate as string)
+      if (location.state.filterNotifType) setFilterNotifType(location.state.filterNotifType as string)
     }
   }, [location.state])
+
+  // Reset to page 1 whenever filters or tab change
+  useEffect(() => { setReceivedPage(1) }, [search, filterDate, filterType, activeTab])
+  useEffect(() => { setBroadcastPage(1) }, [search, filterDate, filterType, filterNotifType, activeTab])
 
   const { data: broadcastLogs = [], isLoading: logsLoading } = useBroadcastLogs()
   const { data: receivedComms = [], isLoading: receivedLoading } = useReceivedCommunications()
@@ -85,26 +93,22 @@ export default function CommunicationLogs() {
   const filterByDate = (dateStr: string, filter: string) => {
     const itemDate = new Date(dateStr)
     const now = new Date()
-    
+
     if (filter === 'TODAY') {
       return itemDate.toDateString() === now.toDateString()
     }
-    
     if (filter === 'WEEK') {
       const startOfWeek = new Date(now)
       startOfWeek.setDate(now.getDate() - now.getDay())
       startOfWeek.setHours(0, 0, 0, 0)
       return itemDate >= startOfWeek
     }
-    
     if (filter === 'MONTH') {
       return itemDate.getMonth() === now.getMonth() && itemDate.getFullYear() === now.getFullYear()
     }
-    
     if (filter === 'YEAR') {
       return itemDate.getFullYear() === now.getFullYear()
     }
-    
     return true
   }
 
@@ -114,15 +118,13 @@ export default function CommunicationLogs() {
         !search ||
         inc.incident_id.toLowerCase().includes(search.toLowerCase()) ||
         inc.source_subsystem.toLowerCase().includes(search.toLowerCase()) ||
-        inc.location.toLowerCase().includes(search.toLowerCase())
+        inc.location.toLowerCase().includes(search.toLowerCase()) ||
+        inc.description.toLowerCase().includes(search.toLowerCase())
       const matchType = filterType === 'ALL' || inc.incident_type === filterType
       const matchDate = filterDate === 'ALL' || filterByDate(inc.created_at, filterDate)
       return matchSearch && matchType && matchDate
     })
-    .sort((a, b) => {
-      const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      return -diff
-    })
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
   const filteredBroadcasts = broadcastLogs
     .filter(log => {
@@ -130,30 +132,37 @@ export default function CommunicationLogs() {
         !search ||
         log.title.toLowerCase().includes(search.toLowerCase()) ||
         (log.incident_id ?? '').toLowerCase().includes(search.toLowerCase()) ||
-        log.operator.toLowerCase().includes(search.toLowerCase())
+        log.operator.toLowerCase().includes(search.toLowerCase()) ||
+        log.message.toLowerCase().includes(search.toLowerCase())
       const matchType = filterType === 'ALL' || log.emergency_type === filterType
       const matchDate = filterDate === 'ALL' || filterByDate(log.broadcast_time, filterDate)
-      return matchSearch && matchType && matchDate
+      const matchNotifType =
+        filterNotifType === 'ALL' ||
+        (filterNotifType === 'EMERGENCY' && log.priority?.toUpperCase() === 'EMERGENCY') ||
+        (filterNotifType === 'WARNING' && (log.priority?.toUpperCase() === 'WARNING' || log.priority?.toUpperCase() === 'NORMAL'))
+      return matchSearch && matchType && matchDate && matchNotifType
     })
-    .sort((a, b) => {
-      const diff = new Date(a.broadcast_time).getTime() - new Date(b.broadcast_time).getTime()
-      return -diff
-    })
+    .sort((a, b) => new Date(b.broadcast_time).getTime() - new Date(a.broadcast_time).getTime())
+
+  // Sliced pages
+  const receivedTotalPages = Math.max(1, Math.ceil(filteredReceived.length / PAGE_SIZE))
+  const receivedPageItems = filteredReceived.slice((receivedPage - 1) * PAGE_SIZE, receivedPage * PAGE_SIZE)
+
+  const broadcastTotalPages = Math.max(1, Math.ceil(filteredBroadcasts.length / PAGE_SIZE))
+  const broadcastPageItems = filteredBroadcasts.slice((broadcastPage - 1) * PAGE_SIZE, broadcastPage * PAGE_SIZE)
 
   return (
     <div className="space-y-5">
       <div>
         <h2 className="page-title">Communication Logs</h2>
-        <p className="page-subtitle">
-          Complete history of all received incidents and broadcast alerts. Click any row to view full details.
-        </p>
+        <p className="page-subtitle">Full audit trail of received and broadcasted communications</p>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-muted rounded-xl p-1 w-full sm:w-fit overflow-x-auto whitespace-nowrap">
         <button
           onClick={() => setActiveTab('received')}
-          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all duration-200 flex-1 sm:flex-initial justify-center ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all duration-200 flex-1 sm:flex-initial justify-center cursor-pointer ${
             activeTab === 'received'
               ? 'bg-card text-foreground shadow-sm'
               : 'text-muted-foreground hover:text-foreground'
@@ -167,7 +176,7 @@ export default function CommunicationLogs() {
         </button>
         <button
           onClick={() => setActiveTab('broadcast')}
-          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all duration-200 flex-1 sm:flex-initial justify-center ${
+          className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all duration-200 flex-1 sm:flex-initial justify-center cursor-pointer ${
             activeTab === 'broadcast'
               ? 'bg-card text-foreground shadow-sm'
               : 'text-muted-foreground hover:text-foreground'
@@ -181,17 +190,17 @@ export default function CommunicationLogs() {
         </button>
       </div>
 
-      {/* Filters */}
+      {/* Filters Bar */}
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="p-3 sm:p-4">
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search..."
+                placeholder="Search by ID, keyword, location..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="pl-9"
+                className="pl-9 text-xs sm:text-sm"
               />
             </div>
             <Select value={filterType} onChange={e => setFilterType(e.target.value)} className="sm:w-44">
@@ -200,6 +209,13 @@ export default function CommunicationLogs() {
                 <option key={t} value={t}>{incidentTypeLabel(t)}</option>
               ))}
             </Select>
+            {activeTab === 'broadcast' && (
+              <Select value={filterNotifType} onChange={e => setFilterNotifType(e.target.value)} className="sm:w-52">
+                <option value="ALL">All Notification Types</option>
+                <option value="EMERGENCY">🚨 Emergency Notification</option>
+                <option value="WARNING">🔔 Notification</option>
+              </Select>
+            )}
             <Select value={filterDate} onChange={e => setFilterDate(e.target.value)} className="sm:w-40">
               <option value="ALL">All Time</option>
               <option value="TODAY">Today</option>
@@ -214,11 +230,16 @@ export default function CommunicationLogs() {
       {/* ── Received Communications Table / Cards ── */}
       {activeTab === 'received' && (
         <Card>
-          <CardHeader className="pb-0">
+          <CardHeader className="pb-0 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-semibold">
               Received Communications
-              <span className="ml-2 text-muted-foreground font-normal">({filteredReceived.length} records)</span>
+              <span className="ml-2 text-muted-foreground font-normal text-xs">({filteredReceived.length} records)</span>
             </CardTitle>
+            {filteredReceived.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                Showing {Math.min((receivedPage - 1) * PAGE_SIZE + 1, filteredReceived.length)}–{Math.min(receivedPage * PAGE_SIZE, filteredReceived.length)} of {filteredReceived.length}
+              </span>
+            )}
           </CardHeader>
           <CardContent className="p-0">
             {receivedLoading ? (
@@ -229,7 +250,7 @@ export default function CommunicationLogs() {
               <>
                 {/* Mobile View: Cards Stack (< md) */}
                 <div className="block md:hidden divide-y divide-border">
-                  {filteredReceived.map(inc => (
+                  {receivedPageItems.map(inc => (
                     <div
                       key={inc.id}
                       onClick={() => setViewedIncident(inc)}
@@ -258,7 +279,7 @@ export default function CommunicationLogs() {
 
                       <div className="flex items-center justify-between text-[11px] pt-1">
                         <span className="text-muted-foreground">{inc.source_subsystem}</span>
-                        <span className="text-xs text-primary font-medium">View Details →</span>
+                        <span className="text-xs text-primary font-medium">View Details &rarr;</span>
                       </div>
                     </div>
                   ))}
@@ -275,7 +296,7 @@ export default function CommunicationLogs() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredReceived.map(inc => (
+                      {receivedPageItems.map(inc => (
                         <tr
                           key={inc.id}
                           onClick={() => setViewedIncident(inc)}
@@ -304,7 +325,7 @@ export default function CommunicationLogs() {
                           </td>
                           <td className="px-4 py-3 text-right">
                             <span className="text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity font-medium">
-                              View Details →
+                              View Details &rarr;
                             </span>
                           </td>
                         </tr>
@@ -315,17 +336,60 @@ export default function CommunicationLogs() {
               </>
             )}
           </CardContent>
+
+          {/* Pagination footer — only shown when there are more than 10 records */}
+          {filteredReceived.length > PAGE_SIZE && (
+            <div className="px-4 py-3 border-t border-border flex items-center justify-between gap-3 bg-muted/20">
+              <span className="text-xs text-muted-foreground">
+                Showing{' '}
+                <span className="font-semibold text-foreground">{Math.min((receivedPage - 1) * PAGE_SIZE + 1, filteredReceived.length)}</span>
+                {'–'}
+                <span className="font-semibold text-foreground">{Math.min(receivedPage * PAGE_SIZE, filteredReceived.length)}</span>
+                {' '}of{' '}
+                <span className="font-semibold text-foreground">{filteredReceived.length}</span>
+                {' '}records
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={receivedPage === 1}
+                  onClick={() => setReceivedPage(p => p - 1)}
+                  className="h-8 px-3 text-xs gap-1 cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Prev
+                </Button>
+                <span className="text-xs font-semibold px-2.5 py-1 bg-card border border-border rounded-lg text-foreground min-w-[80px] text-center">
+                  Page {receivedPage} of {receivedTotalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={receivedPage >= receivedTotalPages}
+                  onClick={() => setReceivedPage(p => p + 1)}
+                  className="h-8 px-3 text-xs gap-1 cursor-pointer"
+                >
+                  Next <ChevronRight className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
       {/* ── Broadcast History Table / Cards ── */}
       {activeTab === 'broadcast' && (
         <Card>
-          <CardHeader className="pb-0">
+          <CardHeader className="pb-0 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-semibold">
               Broadcast History
-              <span className="ml-2 text-muted-foreground font-normal">({filteredBroadcasts.length} records)</span>
+              <span className="ml-2 text-muted-foreground font-normal text-xs">({filteredBroadcasts.length} records)</span>
             </CardTitle>
+            {filteredBroadcasts.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                Showing {Math.min((broadcastPage - 1) * PAGE_SIZE + 1, filteredBroadcasts.length)}–{Math.min(broadcastPage * PAGE_SIZE, filteredBroadcasts.length)} of {filteredBroadcasts.length}
+              </span>
+            )}
           </CardHeader>
           <CardContent className="p-0">
             {logsLoading ? (
@@ -334,9 +398,9 @@ export default function CommunicationLogs() {
               <EmptyState message="No broadcast history found" />
             ) : (
               <>
-                {/* Mobile View: Cards Stack (< md) */}
+                {/* Mobile View: Cards Stack (< md) — paginated */}
                 <div className="block md:hidden divide-y divide-border">
-                  {filteredBroadcasts.map(log => (
+                  {broadcastPageItems.map(log => (
                     <div
                       key={log.id}
                       onClick={() => setViewedBroadcast(log)}
@@ -354,7 +418,7 @@ export default function CommunicationLogs() {
 
                       <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/50">
                         <span>👤 {log.operator} · {formatDate(log.broadcast_time)}</span>
-                        <span className="text-xs text-primary font-medium">View Details →</span>
+                        <span className="text-xs text-primary font-medium">View Details &rarr;</span>
                       </div>
                     </div>
                   ))}
@@ -371,7 +435,7 @@ export default function CommunicationLogs() {
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredBroadcasts.map(log => (
+                      {broadcastPageItems.map(log => (
                         <tr
                           key={log.id}
                           onClick={() => setViewedBroadcast(log)}
@@ -394,7 +458,7 @@ export default function CommunicationLogs() {
                           </td>
                           <td className="px-4 py-3 text-right">
                             <span className="text-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity font-medium">
-                              View Details →
+                              View Details &rarr;
                             </span>
                           </td>
                         </tr>
@@ -405,10 +469,46 @@ export default function CommunicationLogs() {
               </>
             )}
           </CardContent>
+
+          {/* Pagination footer — only shown when there are more than 10 records */}
+          {filteredBroadcasts.length > PAGE_SIZE && (
+            <div className="px-4 py-3 border-t border-border flex items-center justify-between gap-3 bg-muted/20">
+              <span className="text-xs text-muted-foreground">
+                Showing{' '}
+                <span className="font-semibold text-foreground">{Math.min((broadcastPage - 1) * PAGE_SIZE + 1, filteredBroadcasts.length)}</span>
+                {'–'}
+                <span className="font-semibold text-foreground">{Math.min(broadcastPage * PAGE_SIZE, filteredBroadcasts.length)}</span>
+                {' '}of{' '}
+                <span className="font-semibold text-foreground">{filteredBroadcasts.length}</span>
+                {' '}records
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={broadcastPage === 1}
+                  onClick={() => setBroadcastPage(p => p - 1)}
+                  className="h-8 px-3 text-xs gap-1 cursor-pointer"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" /> Prev
+                </Button>
+                <span className="text-xs font-semibold px-2.5 py-1 bg-card border border-border rounded-lg text-foreground min-w-[80px] text-center">
+                  Page {broadcastPage} of {broadcastTotalPages}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={broadcastPage >= broadcastTotalPages}
+                  onClick={() => setBroadcastPage(p => p + 1)}
+                  className="h-8 px-3 text-xs gap-1 cursor-pointer"
+                >
+                  Next <ChevronRight className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
-
-      {/* ── Received Incident Detail Dialog ── */}
       <Dialog open={!!viewedIncident} onOpenChange={(open) => !open && setViewedIncident(null)}>
         {viewedIncident && (
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
@@ -466,7 +566,7 @@ export default function CommunicationLogs() {
                       <div>
                         {translating ? (
                           <div className="space-y-1.5 py-1.5">
-                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Detecting & Translating...</span>
+                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block mb-1">Detecting &amp; Translating...</span>
                             <div className="h-2 bg-muted rounded animate-pulse w-full" />
                             <div className="h-2 bg-muted rounded animate-pulse w-5/6" />
                           </div>

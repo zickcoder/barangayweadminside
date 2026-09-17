@@ -76,7 +76,7 @@ export async function sendLoginOtpEmail(toEmail: string, otpCode: string): Promi
         </div>
       </div>
       <p style="font-size: 12px; color: #64748b; text-align: center; margin-bottom: 20px;">
-        This security code is valid for 10 minutes. Do not share this code with anyone.
+        This security code is valid for 1:30 minutes (90 seconds). Do not share this code with anyone.
       </p>
       <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 16px 0;" />
       <p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 0;">

@@ -1,91 +1,306 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  Megaphone, AlertTriangle, CheckCircle2,
-  Activity, TrendingUp, ArrowUpRight, Wifi, Bot, Server,
-  Smartphone, Building2, XCircle, FileText, Loader2,
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts'
+import {
+  Megaphone, AlertTriangle, CheckCircle2, Activity,
+  TrendingUp, ArrowUpRight, Wifi, Bot, Server,
+  Smartphone, Flame, Droplets, ShieldAlert, HeartPulse, Waves, HelpCircle,
+  FileText, Printer
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { SkeletonCard } from '@/components/ui/skeleton'
-import { StatusBadge, PriorityBadge, AlertPriorityBadge } from '@/components/shared/StatusBadge'
-import { useAlerts, useAlertStats } from '@/hooks/useAlerts'
-import { useIncidents, usePendingIncidentsCount, useUpdateIncidentStatus } from '@/hooks/useIncidents'
-import { detectAndTranslateIncident, isGeminiConfigured } from '@/services/aiService'
-import type { DetectionAndTranslation } from '@/services/aiService'
-import { getGreeting, formatDateShort, formatDate, incidentTypeColor, incidentTypeLabel } from '@/lib/utils'
-import type { Alert, IncomingIncident, IncidentStatus } from '@/types'
+import { AlertPriorityBadge } from '@/components/shared/StatusBadge'
+import { PrintReportModal } from '@/components/shared/PrintReportModal'
+import { useAlerts } from '@/hooks/useAlerts'
+import { usePendingIncidentsCount } from '@/hooks/useIncidents'
+import { useAuth } from '@/context/AuthContext'
+import { getGreeting, formatDateShort, formatDate } from '@/lib/utils'
+import { supabase } from '@/services/supabase'
+import type { Alert, TimeFilter } from '@/types'
 
-export default function Dashboard() {
-  const navigate = useNavigate()
-  const { data: alerts = [], isLoading: alertsLoading } = useAlerts()
-  const { data: incidents = [], isLoading: incidentsLoading } = useIncidents()
-  const { data: stats, isLoading: statsLoading } = useAlertStats('month')
-  const { data: pendingCount = 0 } = usePendingIncidentsCount()
-  const updateStatus = useUpdateIncidentStatus()
+// ─── Color Palette ────────────────────────────────────────────────────────────
+const TYPE_COLORS: Record<string, string> = {
+  FIRE:       '#ef4444',
+  FLOOD:      '#3b82f6',
+  CRIME:      '#8b5cf6',
+  MEDICAL:    '#ec4899',
+  EARTHQUAKE: '#f97316',
+  OTHER:      '#6b7280',
+}
 
-  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
-  const [selectedReceivedIncident, setSelectedReceivedIncident] = useState<IncomingIncident | null>(null)
-  const [disregardTarget, setDisregardTarget] = useState<IncomingIncident | null>(null)
-  const [disregarding, setDisregarding] = useState(false)
+const TYPE_ICONS: Record<string, React.ReactNode> = {
+  FIRE:       <Flame className="w-3.5 h-3.5" />,
+  FLOOD:      <Droplets className="w-3.5 h-3.5" />,
+  CRIME:      <ShieldAlert className="w-3.5 h-3.5" />,
+  MEDICAL:    <HeartPulse className="w-3.5 h-3.5" />,
+  EARTHQUAKE: <Waves className="w-3.5 h-3.5" />,
+  OTHER:      <HelpCircle className="w-3.5 h-3.5" />,
+}
 
-  // AI Translation state for dashboard modal
-  const [translationResult, setTranslationResult] = useState<DetectionAndTranslation | null>(null)
-  const [translating, setTranslating] = useState(false)
-  const [translationError, setTranslationError] = useState('')
+// Helper to format Date as YYYY-MM-DD in local time (prevents UTC timezone offset bugs)
+const formatLocalDateKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+// ─── Live Real-Time KPIs & Analytics Hook ──────────────────────────────────────
+function useLiveDashboardData(timeFilter: TimeFilter, incidentTypeFilter: 'today' | 'week' | 'month' | 'year') {
+  const [loading, setLoading] = useState(true)
+
+  const [allAlerts, setAllAlerts] = useState<Alert[]>([])
+  const [allIncidents, setAllIncidents] = useState<Array<{
+    id: string
+    incident_type: string
+    priority: string
+    status: string
+    created_at: string
+  }>>([])
+
+  const fetchData = useCallback(async () => {
+    try {
+      const [alertsRes, incidentsRes] = await Promise.all([
+        supabase.from('alerts').select('*').order('created_at', { ascending: false }),
+        supabase.from('incoming_incidents').select('id, incident_type, priority, status, created_at'),
+      ])
+
+      setAllAlerts(alertsRes.data || [])
+      setAllIncidents(incidentsRes.data || [])
+    } catch (err) {
+      console.error('Failed to fetch dashboard data:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
-    if (selectedReceivedIncident) {
-      setTranslationResult(null)
-      setTranslationError('')
+    fetchData()
+  }, [fetchData])
 
-      if (!selectedReceivedIncident.description?.trim()) return
+  // Real-Time Supabase subscriptions for live updates without page refresh
+  useEffect(() => {
+    const channel = supabase
+      .channel('dashboard-live-channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'incoming_incidents' }, () => fetchData())
+      .subscribe()
 
-      if (!isGeminiConfigured()) {
-        setTranslationError('Gemini API key is not configured.')
-        return
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [fetchData])
+
+  // Computed Real-Time Metrics & Charts based on Time Filter
+  const computed = useMemo(() => {
+    const now = new Date()
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+
+    // Filter threshold for historical charts
+    let filterStart = 0
+    if (timeFilter === 'week') {
+      const d = new Date(now)
+      d.setDate(d.getDate() - 7)
+      d.setHours(0, 0, 0, 0)
+      filterStart = d.getTime()
+    } else if (timeFilter === 'month') {
+      filterStart = monthStart
+    } else {
+      filterStart = new Date(now.getFullYear(), 0, 1).getTime()
+    }
+
+    // Filtered alerts for the selected period
+    const filteredAlerts = allAlerts.filter(a => new Date(a.created_at).getTime() >= filterStart)
+
+    // Accurate Counts
+    const todayCount = allAlerts.filter(a => new Date(a.created_at).getTime() >= todayStart).length
+    const monthCount = allAlerts.filter(a => new Date(a.created_at).getTime() >= monthStart).length
+    const totalAlertsCount = allAlerts.length
+
+    // Status counts
+    const pendingIncidents = allIncidents.filter(i => i.status === 'Pending').length
+    const broadcastedIncidents = allIncidents.filter(i => i.status === 'Broadcasted').length
+    const disregardedIncidents = allIncidents.filter(i => i.status === 'Disregarded').length
+    const seenIncidents = allIncidents.filter(i => i.status === 'Seen').length
+
+    // Priority Distribution: strictly THIS MONTH with label (as requested)
+    const monthAlerts = allAlerts.filter(a => new Date(a.created_at).getTime() >= monthStart)
+    let monthEmergencyCount = 0
+    let monthNormalNotifCount = 0
+    monthAlerts.forEach(a => {
+      const p = a.priority?.toUpperCase()
+      if (p === 'EMERGENCY') {
+        monthEmergencyCount++
+      } else {
+        monthNormalNotifCount++
       }
+    })
+    const priorityData = [
+      { name: 'Emergency Notification', key: 'EMERGENCY', count: monthEmergencyCount, color: '#ef4444' },
+      { name: 'Notification', key: 'WARNING', count: monthNormalNotifCount, color: '#f97316' },
+    ]
 
-      const performTranslation = async () => {
-        setTranslating(true)
-        try {
-          const res = await detectAndTranslateIncident(selectedReceivedIncident.description)
-          setTranslationResult(res)
-        } catch (err) {
-          console.error(err)
-          setTranslationError('Failed to translate incident description.')
-        } finally {
-          setTranslating(false)
+    // Emergency Type Distribution based on incidentTypeFilter (today, week, month, year)
+    let typeStart = 0
+    if (incidentTypeFilter === 'today') {
+      typeStart = todayStart
+    } else if (incidentTypeFilter === 'week') {
+      const d = new Date(now)
+      d.setDate(d.getDate() - 7)
+      d.setHours(0, 0, 0, 0)
+      typeStart = d.getTime()
+    } else if (incidentTypeFilter === 'month') {
+      typeStart = monthStart
+    } else {
+      typeStart = new Date(now.getFullYear(), 0, 1).getTime()
+    }
+
+    const typeFilteredAlerts = allAlerts.filter(a => new Date(a.created_at).getTime() >= typeStart)
+
+    const typeCounts: Record<string, number> = {
+      FIRE: 0, FLOOD: 0, CRIME: 0, MEDICAL: 0, EARTHQUAKE: 0, OTHER: 0
+    }
+    typeFilteredAlerts.forEach(a => {
+      const t = (a.emergency_type || 'OTHER').toUpperCase()
+      if (typeCounts[t] !== undefined) typeCounts[t]++
+      else typeCounts.OTHER++
+    })
+    const typeData = Object.entries(typeCounts)
+      .map(([name, count]) => ({
+        name,
+        count,
+        color: TYPE_COLORS[name] || '#6b7280',
+      }))
+      .filter(item => item.count > 0 || typeFilteredAlerts.length === 0)
+
+    // Build Time-Series Trend Data with LOCAL date matching
+    const trendMap = new Map<string, { label: string; date: string; alerts: number; incidents: number; timestamp: number }>()
+
+    if (timeFilter === 'week') {
+      // 7 consecutive days up to today
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(now)
+        d.setDate(d.getDate() - i)
+        const key = formatLocalDateKey(d)
+        const label = d.toLocaleDateString('en-PH', { weekday: 'short', month: 'numeric', day: 'numeric' })
+        trendMap.set(key, { label, date: key, alerts: 0, incidents: 0, timestamp: d.getTime() })
+      }
+    } else if (timeFilter === 'month') {
+      // Days of this month up to today
+      const daysInMonth = now.getDate()
+      for (let i = 1; i <= daysInMonth; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth(), i)
+        const key = formatLocalDateKey(d)
+        const label = d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })
+        trendMap.set(key, { label, date: key, alerts: 0, incidents: 0, timestamp: d.getTime() })
+      }
+    } else {
+      // Months of current year up to current month
+      for (let m = 0; m <= now.getMonth(); m++) {
+        const d = new Date(now.getFullYear(), m, 1)
+        const key = `${now.getFullYear()}-${String(m + 1).padStart(2, '0')}`
+        const label = d.toLocaleDateString('en-PH', { month: 'short' })
+        trendMap.set(key, { label, date: key, alerts: 0, incidents: 0, timestamp: d.getTime() })
+      }
+    }
+
+    // Populate alerts in trendMap using local date key
+    allAlerts.forEach(a => {
+      const dt = new Date(a.created_at)
+      if (dt.getTime() >= filterStart) {
+        const key = timeFilter === 'year'
+          ? `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`
+          : formatLocalDateKey(dt)
+        const entry = trendMap.get(key)
+        if (entry) {
+          entry.alerts += 1
         }
       }
+    })
 
-      performTranslation()
-    } else {
-      setTranslationResult(null)
-      setTranslating(false)
-    }
-  }, [selectedReceivedIncident?.id])
+    // Populate incidents in trendMap using local date key
+    allIncidents.forEach(inc => {
+      const dt = new Date(inc.created_at)
+      if (dt.getTime() >= filterStart) {
+        const key = timeFilter === 'year'
+          ? `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}`
+          : formatLocalDateKey(dt)
+        const entry = trendMap.get(key)
+        if (entry) {
+          entry.incidents += 1
+        }
+      }
+    })
 
-  const handleDisregardConfirm = async () => {
-    if (!disregardTarget) return
-    setDisregarding(true)
-    try {
-      await updateStatus.mutateAsync({ id: disregardTarget.id, status: 'Disregarded' as IncidentStatus })
-      setDisregardTarget(null)
-    } finally {
-      setDisregarding(false)
+    const chartTrendData = Array.from(trendMap.values())
+
+    // Incident Status Drill-Down
+    const incidentStatusData = [
+      { name: 'Pending', count: pendingIncidents, color: '#f59e0b' },
+      { name: 'Broadcasted', count: broadcastedIncidents, color: '#22c55e' },
+      { name: 'Seen', count: seenIncidents, color: '#3b82f6' },
+      { name: 'Disregarded', count: disregardedIncidents, color: '#6b7280' },
+    ]
+
+    return {
+      todayCount,
+      monthCount,
+      totalAlertsCount,
+      pendingIncidents,
+      priorityData,
+      typeData,
+      chartTrendData,
+      incidentStatusData,
+      filteredCount: filteredAlerts.length,
+      allIncidentsCount: allIncidents.length,
+      resolvedCount: broadcastedIncidents + seenIncidents,
     }
+  }, [allAlerts, allIncidents, timeFilter, incidentTypeFilter])
+
+  return {
+    loading,
+    refetch: fetchData,
+    allAlerts,
+    ...computed,
   }
+}
+
+// ─── Main Dashboard Component ─────────────────────────────────────────────────
+export default function Dashboard() {
+  const navigate = useNavigate()
+  const { adminEmail } = useAuth()
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('month')
+  const [incidentTypeFilter, setIncidentTypeFilter] = useState<'today' | 'week' | 'month' | 'year'>('month')
+  const [selectedAlert, setSelectedAlert] = useState<Alert | null>(null)
+  const [showPrintModal, setShowPrintModal] = useState(false)
+
+  const { data: pendingCount = 0 } = usePendingIncidentsCount()
+  const { data: mobileAlerts = [] } = useAlerts()
+
+  const {
+    loading,
+    allAlerts,
+    todayCount,
+    monthCount,
+    totalAlertsCount,
+    priorityData,
+    typeData,
+    chartTrendData,
+    incidentStatusData,
+    filteredCount,
+    allIncidentsCount = 0,
+    resolvedCount = 0,
+  } = useLiveDashboardData(timeFilter, incidentTypeFilter)
 
   const greeting = getGreeting()
-  const recentAlerts = alerts.slice(0, 5)
-  const latestAlert = alerts[0]
+  const latestAlert = allAlerts[0] || mobileAlerts[0]
 
   return (
     <div className="space-y-6">
 
-      {/* Welcome Card */}
+      {/* ── Welcome Banner ────────────────────────────────────────────────────── */}
       <div className="welcome-card rounded-2xl p-4 sm:p-6 text-white relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-0 right-0 w-64 h-64 rounded-full bg-white blur-3xl -translate-y-1/2 translate-x-1/4" />
@@ -99,49 +314,49 @@ export default function Dashboard() {
               <p className="text-white/60 text-xs sm:text-sm mt-1">Barangay 178 Emergency Communication System</p>
               <p className="text-white/50 text-[11px] sm:text-xs mt-0.5">Camarin, Caloocan City</p>
             </div>
-            <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2 pt-2 sm:pt-0 border-t border-white/10 sm:border-0">
-              {pendingCount > 0 && (
+            {pendingCount > 0 && (
+              <div className="flex items-center">
                 <button
                   onClick={() => navigate('/incoming', { state: { filterStatus: 'Pending' } })}
-                  className="flex items-center gap-1.5 bg-white/10 backdrop-blur-sm px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-full text-[11px] sm:text-xs text-orange-200 border border-orange-300/30 hover:bg-white/20 transition-colors cursor-pointer"
+                  className="flex items-center gap-1.5 bg-white/10 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs text-orange-200 border border-orange-300/30 hover:bg-white/20 transition-colors cursor-pointer"
                 >
-                  <AlertTriangle className="w-3 h-3" />
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-300" />
                   <span>{pendingCount} pending incident{pendingCount > 1 ? 's' : ''}</span>
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Analytics Cards */}
+      {/* ── Primary KPI Summary Cards ────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        {statsLoading ? (
+        {loading ? (
           Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
         ) : (
           <>
             <StatCard
               label="Today's Broadcasts"
-              value={stats?.today ?? 0}
+              value={todayCount}
               icon={<Megaphone className="w-4 h-4 sm:w-5 sm:h-5" />}
               color="primary"
-              trend="+2 from yesterday"
+              trend={`+${todayCount} sent since 12:00 AM`}
               onClick={() => navigate('/logs', { state: { tab: 'broadcast', filterDate: 'TODAY' } })}
             />
             <StatCard
-              label="This Month's Broadcasts"
-              value={stats?.month ?? 0}
+              label="This Month"
+              value={monthCount}
               icon={<Activity className="w-4 h-4 sm:w-5 sm:h-5" />}
               color="accent"
-              trend="Active month"
+              trend="Total broadcasts this month"
               onClick={() => navigate('/logs', { state: { tab: 'broadcast', filterDate: 'MONTH' } })}
             />
             <StatCard
               label="Total Alerts Sent"
-              value={stats?.total ?? 0}
+              value={totalAlertsCount}
               icon={<CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5" />}
               color="success"
-              trend="All time"
+              trend="All-time verified alerts"
               onClick={() => navigate('/logs', { state: { tab: 'broadcast', filterDate: 'ALL' } })}
             />
             <StatCard
@@ -149,26 +364,26 @@ export default function Dashboard() {
               value={pendingCount}
               icon={<AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5" />}
               color={pendingCount > 0 ? 'danger' : 'muted'}
-              trend={pendingCount > 0 ? 'Requires attention' : 'All clear'}
+              trend={pendingCount > 0 ? 'Action required immediately' : 'All incidents resolved'}
               onClick={() => navigate('/incoming', { state: { filterStatus: 'Pending' } })}
             />
           </>
         )}
       </div>
 
-      {/* Latest Emergency Alert Card */}
+      {/* ── Latest Emergency Alert Ribbon ────────────────────────────────────── */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h3 className="text-xs sm:text-sm font-bold font-display uppercase tracking-wider text-muted-foreground flex items-center gap-2">
             <Megaphone className="w-4 h-4 text-primary" />
-            Latest Emergency Alert
+            Latest Broadcast Emergency Alert
           </h3>
           {latestAlert && (
             <button
               onClick={() => navigate('/logs', { state: { tab: 'broadcast' } })}
               className="text-xs text-primary hover:underline font-medium cursor-pointer"
             >
-              View Communication Logs →
+              View Full Communication Logs →
             </button>
           )}
         </div>
@@ -203,7 +418,7 @@ export default function Dashboard() {
                 <span className="font-medium text-foreground">{formatDateShort(latestAlert.created_at)}</span>
                 <span className="text-emerald-500 font-semibold flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                  Active Broadcast
+                  Active In App
                 </span>
               </div>
             </div>
@@ -215,7 +430,472 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* Alert Detail Popout Dialog */}
+      {/* ── Time Filter Controls for Analytics & Historical Reports ───────────── */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-2">
+        <div>
+          <h3 className="text-sm sm:text-base font-bold font-display text-foreground flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-primary" />
+            Interactive Analytics &amp; Historical Reports
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Dynamic drill-down metrics filtered by your chosen time frame
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Official Print / Save to PDF Button */}
+          <Button
+            type="button"
+            onClick={() => setShowPrintModal(true)}
+            className="h-8 px-3 text-xs font-bold bg-card hover:bg-muted text-foreground border border-border rounded-xl shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+            title="Print or Save Analytics & Historical Reports as PDF"
+          >
+            <Printer className="w-3.5 h-3.5 text-primary" />
+            <span>Print / Save PDF</span>
+          </Button>
+
+          <div className="flex items-center gap-1 bg-muted p-1 rounded-xl border border-border">
+            {(['week', 'month', 'year'] as TimeFilter[]).map((filter) => (
+              <button
+                key={filter}
+                onClick={() => setTimeFilter(filter)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  timeFilter === filter
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {filter === 'week' ? 'Last 7 Days' : filter === 'month' ? 'This Month' : 'This Year'}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Chart Section 1: Broadcast & Incident Volume Trends ────────────────── */}
+      <Card className="border-border">
+        <CardHeader className="pb-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Activity className="w-4 h-4 text-primary" />
+                Communication Activity Trend ({timeFilter === 'week' ? 'Last 7 Days' : timeFilter === 'month' ? 'Day-by-Day' : 'Monthly'})
+              </CardTitle>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Displays daily broadcast volume over time ({filteredCount} total alerts in period)
+              </p>
+            </div>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="flex items-center gap-1.5 text-primary font-medium">
+                <span className="w-2.5 h-2.5 rounded-full bg-primary inline-block" /> Broadcasts Sent
+              </span>
+              <span className="flex items-center gap-1.5 text-muted-foreground font-medium">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" /> Incoming Incidents
+              </span>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="h-56 skeleton rounded-xl" />
+          ) : chartTrendData.length === 0 ? (
+            <div className="h-56 flex items-center justify-center text-xs text-muted-foreground">
+              No activity recorded in this period.
+            </div>
+          ) : (
+            <div className="h-56 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartTrendData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="alertColorGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.4} />
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="incidentColorGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickLine={false} />
+                  <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickLine={false} allowDecimals={false} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'hsl(var(--card))',
+                      borderColor: 'hsl(var(--border))',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                    }}
+                    labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 'bold' }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="alerts"
+                    name="Broadcasts"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={2.5}
+                    fill="url(#alertColorGrad)"
+                    dot={{ fill: 'hsl(var(--primary))', strokeWidth: 0, r: 3 }}
+                    activeDot={{ r: 5 }}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="incidents"
+                    name="Incoming Incidents"
+                    stroke="#f59e0b"
+                    strokeWidth={2}
+                    fill="url(#incidentColorGrad)"
+                    dot={{ fill: '#f59e0b', strokeWidth: 0, r: 2.5 }}
+                    activeDot={{ r: 4 }}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Chart Section 2: Distribution by Priority & Emergency Category ──────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+        {/* Priority Breakdown Bar Chart (Clickable -> Filters Broadcast Logs for This Month) */}
+        <Card className="border-border">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 text-destructive" />
+                  Broadcasts by Priority Level (This Month)
+                </CardTitle>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  This month's priority distribution · Click a bar to filter logs
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPrintModal(true)}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold bg-muted hover:bg-muted/80 text-foreground border border-border cursor-pointer transition-colors"
+                  title="Print / Save Broadcasts by Priority Level to PDF"
+                >
+                  <Printer className="w-3 h-3 text-primary" />
+                  <span className="hidden sm:inline">Print / PDF</span>
+                </button>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                  This Month
+                </span>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="h-44 skeleton rounded-xl" />
+            ) : (
+              <div className="h-44 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={priorityData} margin={{ top: 8, right: 10, left: -25, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickLine={false} />
+                    <YAxis tick={{ fontSize: 10 }} stroke="hsl(var(--muted-foreground))" tickLine={false} allowDecimals={false} />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: 'hsl(var(--card))',
+                        borderColor: 'hsl(var(--border))',
+                        borderRadius: '8px',
+                        fontSize: '12px',
+                      }}
+                      formatter={(v: any) => [`${v ?? 0} broadcast${v !== 1 ? 's' : ''}`, 'Count']}
+                    />
+                    <Bar
+                      dataKey="count"
+                      radius={[6, 6, 0, 0]}
+                      className="cursor-pointer"
+                      onClick={(entry: any) => {
+                        const targetKey = entry?.key || (entry?.name?.includes('Emergency') ? 'EMERGENCY' : 'WARNING')
+                        navigate('/logs', { state: { tab: 'broadcast', filterNotifType: targetKey, filterDate: 'MONTH' } })
+                      }}
+                    >
+                      {priorityData.map((entry) => (
+                        <Cell
+                          key={entry.name}
+                          fill={entry.color}
+                          className="cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => {
+                            navigate('/logs', { state: { tab: 'broadcast', filterNotifType: entry.key, filterDate: 'MONTH' } })
+                          }}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Category Donut & Breakdown (Clickable -> Filters Broadcast Logs with selected time option) */}
+        <Card className="border-border">
+          <CardHeader className="pb-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Flame className="w-4 h-4 text-orange-500" />
+                  Alerts by Incident Type
+                </CardTitle>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Click any category to filter Broadcast Alerts Log
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setShowPrintModal(true)}
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold bg-muted hover:bg-muted/80 text-foreground border border-border cursor-pointer transition-colors"
+                  title="Print / Save Alerts by Incident Type to PDF"
+                >
+                  <Printer className="w-3 h-3 text-primary" />
+                  <span className="hidden sm:inline">Print / PDF</span>
+                </button>
+
+                {/* Time filter options for Incident Type */}
+                <div className="flex items-center gap-0.5 bg-muted p-0.5 rounded-lg border border-border">
+                  {[
+                    { key: 'today', label: 'Today' },
+                    { key: 'week',  label: 'This Week' },
+                    { key: 'month', label: 'This Month' },
+                    { key: 'year',  label: 'This Year' },
+                  ].map((opt) => (
+                    <button
+                      key={opt.key}
+                      onClick={() => setIncidentTypeFilter(opt.key as any)}
+                      className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                        incidentTypeFilter === opt.key
+                          ? 'bg-primary text-primary-foreground shadow-sm'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="h-44 skeleton rounded-xl" />
+            ) : typeData.every(t => t.count === 0) ? (
+              <div className="h-44 flex items-center justify-center text-xs text-muted-foreground">
+                No categorized alerts found for this filter.
+              </div>
+            ) : (
+              <div className="flex items-center gap-4 h-44">
+                <div className="w-36 h-36 flex-shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={typeData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={40}
+                        outerRadius={65}
+                        paddingAngle={3}
+                        dataKey="count"
+                        className="cursor-pointer"
+                        onClick={(entry: any) => {
+                          if (entry && entry.name) {
+                            const dateParam = incidentTypeFilter === 'today' ? 'TODAY'
+                              : incidentTypeFilter === 'week' ? 'WEEK'
+                              : incidentTypeFilter === 'month' ? 'MONTH'
+                              : 'YEAR'
+                            navigate('/logs', { state: { tab: 'broadcast', filterType: entry.name, filterDate: dateParam } })
+                          }
+                        }}
+                      >
+                        {typeData.map((entry) => (
+                          <Cell
+                            key={entry.name}
+                            fill={entry.color}
+                            className="cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={() => {
+                              const dateParam = incidentTypeFilter === 'today' ? 'TODAY'
+                                : incidentTypeFilter === 'week' ? 'WEEK'
+                                : incidentTypeFilter === 'month' ? 'MONTH'
+                                : 'YEAR'
+                              navigate('/logs', { state: { tab: 'broadcast', filterType: entry.name, filterDate: dateParam } })
+                            }}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: 'hsl(var(--card))',
+                          borderColor: 'hsl(var(--border))',
+                          borderRadius: '8px',
+                          fontSize: '12px',
+                        }}
+                        formatter={(v: any) => [`${v ?? 0} alert${v !== 1 ? 's' : ''}`, ''] as any}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="flex-1 grid grid-cols-2 gap-2 overflow-y-auto max-h-36 pr-1">
+                  {typeData.map((t) => (
+                    <div
+                      key={t.name}
+                      onClick={() => {
+                        const dateParam = incidentTypeFilter === 'today' ? 'TODAY'
+                          : incidentTypeFilter === 'week' ? 'WEEK'
+                          : incidentTypeFilter === 'month' ? 'MONTH'
+                          : 'YEAR'
+                        navigate('/logs', { state: { tab: 'broadcast', filterType: t.name, filterDate: dateParam } })
+                      }}
+                      className="flex items-center justify-between p-1.5 rounded-lg bg-muted/40 border border-border hover:bg-muted hover:border-primary/40 cursor-pointer transition-colors text-xs group"
+                      title={`Filter ${t.name} alerts in Broadcast Alerts Log (${incidentTypeFilter})`}
+                    >
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span style={{ color: t.color }}>{TYPE_ICONS[t.name] || <HelpCircle className="w-3.5 h-3.5" />}</span>
+                        <span className="text-muted-foreground font-medium truncate group-hover:text-primary transition-colors">{t.name}</span>
+                      </div>
+                      <span className="font-bold text-foreground ml-1.5">{t.count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+      </div>
+
+      {/* ── Historical Reports & Infrastructure Status Panel ───────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        {/* Historical Highlights & Resolution */}
+        <Card className="lg:col-span-2 border-border">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-primary" />
+                  Historical Incident Handling &amp; Resolution
+                </CardTitle>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Detailed status breakdown of community emergency transmissions
+                </p>
+              </div>
+              <button
+                onClick={() => navigate('/logs', { state: { tab: 'broadcast' } })}
+                className="text-xs text-primary hover:underline font-medium cursor-pointer"
+              >
+                Full Logs →
+              </button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Status breakdown boxes */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              {incidentStatusData.map((s) => (
+                <div key={s.name} className="p-3 rounded-xl bg-muted/40 border border-border">
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">
+                    {s.name}
+                  </span>
+                  <p className="text-xl font-bold font-display mt-0.5" style={{ color: s.color }}>
+                    {s.count}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {s.name === 'Broadcasted' ? 'Escalated to app' : s.name === 'Pending' ? 'Needs review' : 'Handled'}
+                  </p>
+                </div>
+              ))}
+            </div>
+
+            {/* Recent Broadcast History List */}
+            <div className="space-y-2 pt-2">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider block">
+                Recent Broadcast Records ({allAlerts.length} total)
+              </span>
+              {allAlerts.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-4 text-center">No broadcasts available.</p>
+              ) : (
+                <div className="divide-y divide-border border border-border rounded-xl overflow-hidden bg-card">
+                  {allAlerts.slice(0, 5).map((a) => (
+                    <div
+                      key={a.id}
+                      onClick={() => setSelectedAlert(a)}
+                      className="p-3 flex items-center justify-between gap-3 hover:bg-muted/40 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className="w-2 h-2 rounded-full flex-shrink-0"
+                          style={{ background: a.priority?.toUpperCase() === 'EMERGENCY' ? '#ef4444' : '#f97316' }}
+                        />
+                        <div className="truncate">
+                          <p className="text-xs font-semibold text-foreground truncate">{a.title}</p>
+                          <p className="text-[11px] text-muted-foreground truncate">{a.preview}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <AlertPriorityBadge priority={a.priority} />
+                        <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                          {formatDateShort(a.created_at)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* System & Infrastructure Panel */}
+        <Card className="border-border">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Server className="w-4 h-4 text-muted-foreground" />
+                Infrastructure &amp; Health
+              </CardTitle>
+              <button
+                onClick={() => navigate('/settings')}
+                className="text-xs text-primary hover:underline cursor-pointer"
+              >
+                Settings
+              </button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <SystemStatusRow label="Database Engine" icon={<Wifi className="w-4 h-4" />} status="online" />
+            <SystemStatusRow label="AI Tagalog/English/Taglish" icon={<Bot className="w-4 h-4" />} status="online" />
+            <SystemStatusRow label="Emergency Notification Channel" icon={<Smartphone className="w-4 h-4" />} status="online" />
+
+            {latestAlert && (
+              <div className="pt-3 border-t border-border">
+                <p className="text-xs font-semibold text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                  <ArrowUpRight className="w-3 h-3 text-primary" />
+                  Active Incident On Air
+                </p>
+                <div
+                  onClick={() => setSelectedAlert(latestAlert)}
+                  className="p-2.5 rounded-lg bg-muted/50 border border-border hover:bg-muted cursor-pointer transition-colors"
+                >
+                  <p className="text-xs font-semibold text-foreground truncate">{latestAlert.title}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <AlertPriorityBadge priority={latestAlert.priority} />
+                    <span className="text-[10px] text-muted-foreground">{formatDateShort(latestAlert.created_at)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+      </div>
+
+      {/* ── Alert Detail Modal Dialog ────────────────────────────────────────── */}
       <Dialog open={!!selectedAlert} onOpenChange={(open) => !open && setSelectedAlert(null)}>
         {selectedAlert && (
           <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
@@ -249,7 +929,7 @@ export default function Dashboard() {
                   <span className="font-semibold text-foreground">{formatDate(selectedAlert.created_at)}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">Channels</span>
+                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">Channel</span>
                   <span className="font-semibold text-emerald-500 flex items-center gap-1">
                     <Smartphone className="w-3 h-3" />
                     Mobile App
@@ -281,9 +961,7 @@ export default function Dashboard() {
             </div>
 
             <DialogFooter className="flex-col sm:flex-row gap-2">
-              <Button variant="outline" onClick={() => setSelectedAlert(null)}>
-                Close
-              </Button>
+              <Button variant="outline" onClick={() => setSelectedAlert(null)}>Close</Button>
               <Button
                 onClick={() => {
                   const aid = selectedAlert.id
@@ -299,412 +977,30 @@ export default function Dashboard() {
         )}
       </Dialog>
 
-      {/* Received Communications Incidents Section */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm sm:text-base font-semibold font-display text-foreground">Received Communications Incidents</h3>
-          <button
-            onClick={() => navigate('/logs', { state: { tab: 'received' } })}
-            className="text-xs text-primary hover:underline font-medium"
-          >
-            View Communication Logs →
-          </button>
-        </div>
+      {/* ── Printable Official Analytics & Historical Report Modal ────────────── */}
+      <PrintReportModal
+        open={showPrintModal}
+        onClose={() => setShowPrintModal(false)}
+        priorityData={priorityData}
+        typeData={typeData}
+        monthAlertsCount={monthCount}
+        todayAlertsCount={todayCount}
+        totalAlertsCount={totalAlertsCount}
+        allIncidentsCount={allIncidentsCount}
+        resolvedCount={resolvedCount}
+        incidentTypeFilter={incidentTypeFilter}
+        timeFilter={timeFilter}
+        adminEmail={adminEmail}
+      />
 
-        <Card>
-          <CardContent className="p-0">
-            {incidentsLoading ? (
-              <div className="p-6">
-                <div className="space-y-3">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="skeleton h-8 w-full rounded" />
-                  ))}
-                </div>
-              </div>
-            ) : incidents.length === 0 ? (
-              <div className="p-12 text-center text-muted-foreground text-xs sm:text-sm">
-                No received incidents found
-              </div>
-            ) : (
-              <>
-                {/* Mobile View: Card Stack (< md) */}
-                <div className="block md:hidden divide-y divide-border">
-                  {incidents.slice(0, 8).map(inc => (
-                    <div
-                      key={inc.id}
-                      onClick={() => setSelectedReceivedIncident(inc)}
-                      className="p-3.5 hover:bg-muted/40 transition-colors cursor-pointer space-y-2"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-mono text-xs text-primary font-semibold">{inc.incident_id}</span>
-                        <div className="flex items-center gap-1.5">
-                          <span
-                            className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                            style={{
-                              background: `${incidentTypeColor(inc.incident_type)}18`,
-                              color: incidentTypeColor(inc.incident_type),
-                            }}
-                          >
-                            {incidentTypeLabel(inc.incident_type)}
-                          </span>
-                          <PriorityBadge priority={inc.priority} />
-                        </div>
-                      </div>
-
-                      <div className="flex justify-between items-start text-xs gap-2">
-                        <span className="text-foreground font-medium truncate">{inc.location}</span>
-                        <span className="text-muted-foreground text-[10px] whitespace-nowrap">{formatDateShort(inc.created_at)}</span>
-                      </div>
-
-                      <div className="flex items-center justify-between text-[11px] pt-1">
-                        <span className="text-muted-foreground">{inc.source_subsystem}</span>
-                        <StatusBadge status={inc.status} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Desktop View: Table (>= md) */}
-                <div className="hidden md:block overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border">
-                        {['Incident ID', 'Source', 'Type', 'Priority', 'Location', 'Received Time', 'Status'].map(h => (
-                          <th key={h} className="text-left text-xs font-semibold text-muted-foreground px-4 py-3">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {incidents.slice(0, 8).map(inc => (
-                        <tr
-                          key={inc.id}
-                          onClick={() => setSelectedReceivedIncident(inc)}
-                          className="border-b border-border last:border-0 table-row-hover transition-colors cursor-pointer"
-                        >
-                          <td className="px-4 py-3">
-                            <span className="font-mono text-xs text-primary font-semibold">{inc.incident_id}</span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-xs text-muted-foreground">{inc.source_subsystem}</span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span
-                              className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                              style={{
-                                background: `${incidentTypeColor(inc.incident_type)}18`,
-                                color: incidentTypeColor(inc.incident_type),
-                              }}
-                            >
-                              {incidentTypeLabel(inc.incident_type)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <PriorityBadge priority={inc.priority} />
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-xs text-foreground max-w-[160px] truncate block" title={inc.location}>
-                              {inc.location}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="text-xs text-muted-foreground whitespace-nowrap">
-                              {formatDateShort(inc.created_at)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <StatusBadge status={inc.status} />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Received Incident Detail Dialog přímo na Dashboard screen UI */}
-      <Dialog open={!!selectedReceivedIncident} onOpenChange={(open) => !open && setSelectedReceivedIncident(null)}>
-        {selectedReceivedIncident && (
-          <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <div className="flex items-center gap-3 mb-1">
-                <div
-                  className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-bold shadow-sm"
-                  style={{ background: incidentTypeColor(selectedReceivedIncident.incident_type) }}
-                >
-                  {selectedReceivedIncident.incident_type.charAt(0)}
-                </div>
-                <div>
-                  <DialogTitle className="text-base font-bold font-display flex items-center gap-2">
-                    <span>Received Communication Detail</span>
-                  </DialogTitle>
-                  <p className="text-xs text-muted-foreground font-mono mt-0.5">{selectedReceivedIncident.incident_id}</p>
-                </div>
-              </div>
-            </DialogHeader>
-
-            <div className="space-y-4 py-2">
-              <div className="flex gap-2 flex-wrap">
-                <StatusBadge status={selectedReceivedIncident.status} />
-                <PriorityBadge priority={selectedReceivedIncident.priority} />
-                <span
-                  className="text-xs font-semibold px-2.5 py-0.5 rounded-full"
-                  style={{
-                    background: `${incidentTypeColor(selectedReceivedIncident.incident_type)}18`,
-                    color: incidentTypeColor(selectedReceivedIncident.incident_type),
-                  }}
-                >
-                  {incidentTypeLabel(selectedReceivedIncident.incident_type)}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-muted/40 border border-border text-xs">
-                <div>
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">Source Subsystem</span>
-                  <span className="font-semibold text-foreground">{selectedReceivedIncident.source_subsystem}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">Reported By</span>
-                  <span className="font-semibold text-foreground">{selectedReceivedIncident.reported_by ?? 'Unknown'}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">Location</span>
-                  <span className="font-semibold text-foreground">{selectedReceivedIncident.location}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider block">Received Time</span>
-                  <span className="font-semibold text-foreground">{formatDate(selectedReceivedIncident.created_at)}</span>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs font-semibold text-muted-foreground mb-1.5 flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-primary" />
-                  Incident Description
-                </p>
-                <div className="space-y-3">
-                  <div className="p-3.5 rounded-xl bg-card border border-border text-sm text-foreground leading-relaxed shadow-inner">
-                    {selectedReceivedIncident.description ? (
-                      <p>{selectedReceivedIncident.description}</p>
-                    ) : (
-                      <p className="text-muted-foreground italic text-xs">No description available.</p>
-                    )}
-                  </div>
-
-                  {/* AI Translation Block */}
-                  {selectedReceivedIncident.description?.trim() && (
-                    <div className="p-3 bg-primary/5 rounded-xl border border-primary/15">
-                      {translating ? (
-                        <div className="space-y-1.5 py-1">
-                          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider block">Detecting & Translating...</span>
-                          <div className="h-2 bg-muted rounded animate-pulse w-full" />
-                          <div className="h-2 bg-muted rounded animate-pulse w-4/5" />
-                        </div>
-                      ) : translationError ? (
-                        <div>
-                          <span className="text-[10px] font-bold text-destructive uppercase tracking-wider block">Translation Failed</span>
-                          <p className="text-xs text-muted-foreground italic mt-0.5">{translationError}</p>
-                        </div>
-                      ) : translationResult ? (
-                        <div>
-                          <span className="text-[10px] font-bold text-primary uppercase tracking-wider block">
-                            {translationResult.detected_language === 'English'
-                              ? '[Translated to Tagalog]'
-                              : '[Translated to English]'}
-                          </span>
-                          <p className="text-xs text-foreground leading-relaxed mt-1 whitespace-pre-line">
-                            {translationResult.translated_text}
-                          </p>
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <DialogFooter className="flex-row items-center justify-between gap-2">
-              <Button variant="outline" onClick={() => setSelectedReceivedIncident(null)}>
-                Close
-              </Button>
-              <div className="flex items-center gap-2">
-                {selectedReceivedIncident.status !== 'Broadcasted' && selectedReceivedIncident.status !== 'Disregarded' ? (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        const inc = selectedReceivedIncident
-                        setSelectedReceivedIncident(null)
-                        setDisregardTarget(inc)
-                      }}
-                      className="gap-1.5 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                    >
-                      <XCircle className="w-3.5 h-3.5" />
-                      Disregard
-                    </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        const inc = selectedReceivedIncident
-                        setSelectedReceivedIncident(null)
-                        navigate('/broadcast', { state: { incident: inc } })
-                      }}
-                      className="gap-1.5 text-xs font-bold"
-                    >
-                      <Megaphone className="w-3.5 h-3.5" />
-                      Broadcast Incident
-                    </Button>
-                  </>
-                ) : (
-                  <span className="text-xs text-muted-foreground font-medium flex items-center gap-1.5 px-3 py-1 bg-muted rounded-lg border border-border">
-                    Status: <StatusBadge status={selectedReceivedIncident.status} />
-                  </span>
-                )}
-              </div>
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
-
-      {/* Disregard Confirm Dialog */}
-      <Dialog open={!!disregardTarget} onOpenChange={(open) => !open && setDisregardTarget(null)}>
-        {disregardTarget && (
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <div className="flex items-center gap-3 mb-1">
-                <div className="w-10 h-10 rounded-xl bg-destructive/10 flex items-center justify-center flex-shrink-0">
-                  <XCircle className="w-5 h-5 text-destructive" />
-                </div>
-                <div>
-                  <DialogTitle>Disregard Incident?</DialogTitle>
-                  <p className="text-xs text-muted-foreground font-mono mt-0.5">{disregardTarget.incident_id}</p>
-                </div>
-              </div>
-            </DialogHeader>
-            <div className="py-2">
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                This incident will be marked as <span className="font-semibold text-foreground">Disregarded</span>.
-              </p>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setDisregardTarget(null)} disabled={disregarding}>Cancel</Button>
-              <Button variant="destructive" onClick={handleDisregardConfirm} disabled={disregarding} className="gap-2">
-                {disregarding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
-                Disregard
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
-
-      {/* Bottom Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Recent Broadcasts */}
-        <Card 
-          onClick={() => navigate('/logs', { state: { tab: 'broadcast' } })}
-          className="lg:col-span-2 cursor-pointer hover:border-primary/40 transition-colors"
-        >
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold">Recent Broadcasts</CardTitle>
-              <TrendingUp className="w-4 h-4 text-muted-foreground" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {alertsLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="space-y-1">
-                    <div className="skeleton h-3 w-3/4 rounded" />
-                    <div className="skeleton h-2 w-1/2 rounded" />
-                  </div>
-                ))}
-              </div>
-            ) : recentAlerts.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">No broadcasts yet</p>
-            ) : (
-              <div className="space-y-3">
-                {recentAlerts.map(alert => (
-                  <div key={alert.id} className="flex gap-3 group">
-                    <div className="w-1.5 h-1.5 rounded-full bg-primary mt-2 flex-shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{alert.title}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <AlertPriorityBadge priority={alert.priority} />
-                        <span className="text-[10px] text-muted-foreground">
-                          {formatDateShort(alert.created_at)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* System Status */}
-        <Card 
-          onClick={() => navigate('/settings')}
-          className="cursor-pointer hover:border-primary/40 transition-colors"
-        >
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-semibold">System Status</CardTitle>
-              <Server className="w-4 h-4 text-muted-foreground" />
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <SystemStatusRow
-              label="Database Connected"
-              icon={<Wifi className="w-4 h-4" />}
-              status="online"
-            />
-            <SystemStatusRow
-              label="AI Status"
-              icon={<Bot className="w-4 h-4" />}
-              status="online"
-            />
-
-            {/* Latest Alert */}
-            {latestAlert && (
-              <div className="pt-3 border-t border-border">
-                <p className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
-                  <ArrowUpRight className="w-3 h-3" />
-                  Latest Emergency Alert
-                </p>
-                <div className="p-3 rounded-lg bg-muted/50 space-y-1.5">
-                  <p className="text-xs font-semibold text-foreground">{latestAlert.title}</p>
-                  <p className="text-[11px] text-muted-foreground line-clamp-2">{latestAlert.preview}</p>
-                  <div className="flex items-center gap-2 pt-1">
-                    <AlertPriorityBadge priority={latestAlert.priority} />
-                    <span className="text-[10px] text-muted-foreground">
-                      {formatDateShort(latestAlert.created_at)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
     </div>
   )
 }
 
-// ─── Sub-components ────────────────────────────────────────────────────────────
+// ─── Sub-Components ───────────────────────────────────────────────────────────
 
 function StatCard({
-  label,
-  value,
-  icon,
-  color,
-  trend,
-  onClick,
+  label, value, icon, color, trend, onClick,
 }: {
   label: string
   value: number
@@ -715,17 +1011,13 @@ function StatCard({
 }) {
   const colorMap = {
     primary: 'bg-primary/10 text-primary',
-    accent: 'bg-accent/10 text-accent',
+    accent:  'bg-accent/10 text-accent',
     success: 'bg-green-500/10 text-green-600 dark:text-green-400',
-    danger: 'bg-destructive/10 text-destructive',
-    muted: 'bg-muted text-muted-foreground',
+    danger:  'bg-destructive/10 text-destructive',
+    muted:   'bg-muted text-muted-foreground',
   }
-
   return (
-    <div 
-      onClick={onClick}
-      className={`stat-card ${onClick ? 'cursor-pointer hover:border-primary/40 transition-colors' : ''}`}
-    >
+    <div onClick={onClick} className={`stat-card ${onClick ? 'cursor-pointer hover:border-primary/40 transition-colors' : ''}`}>
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-medium text-muted-foreground">{label}</p>
@@ -741,20 +1033,13 @@ function StatCard({
 }
 
 function SystemStatusRow({
-  label,
-  icon,
-  status,
+  label, icon, status,
 }: {
   label: string
   icon: React.ReactNode
   status: 'online' | 'offline' | 'warning'
 }) {
-  const statusLabel = {
-    online: 'Operational',
-    offline: 'Offline',
-    warning: 'Not Configured',
-  }
-
+  const statusLabel = { online: 'Operational', offline: 'Offline', warning: 'Not Configured' }
   return (
     <div className="flex items-center gap-3">
       <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-muted-foreground">

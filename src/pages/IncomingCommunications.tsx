@@ -15,7 +15,7 @@ import { SkeletonTable } from '@/components/ui/skeleton'
 import { StatusBadge, PriorityBadge } from '@/components/shared/StatusBadge'
 import { useIncidents, useUpdateIncidentStatus } from '@/hooks/useIncidents'
 import { seedDemoIncident } from '@/services/incidentApi'
-import { generateEnglishAlert, generateTagalogAlert, isGeminiConfigured } from '@/services/aiService'
+import { generateEnglishAlert, generateTagalogAlert, generateTaglishAlert, isGeminiConfigured } from '@/services/aiService'
 import { formatDate, incidentTypeLabel, incidentTypeColor } from '@/lib/utils'
 import type { IncomingIncident, IncidentStatus } from '@/types'
 
@@ -31,7 +31,7 @@ function detectLanguage(text: string): 'English' | 'Tagalog' | 'Taglish' {
   return 'English'
 }
 
-type BroadcastModalLang = 'English' | 'Tagalog' | null
+type BroadcastModalLang = 'English' | 'Tagalog' | 'Taglish' | null
 
 export default function IncomingCommunications() {
   const navigate = useNavigate()
@@ -121,13 +121,18 @@ export default function IncomingCommunications() {
     }
   }
 
-  // Open Broadcast dialog (does NOT mark as seen — they haven't acted yet)
+  // Open Broadcast dialog: mark as Seen if still Pending (admin reviewed before broadcasting)
   const handleOpenBroadcast = (inc: IncomingIncident) => {
-    setBroadcastIncident(inc)
+    if (inc.status === 'Pending') {
+      updateStatus.mutate({ id: inc.id, status: 'Seen' })
+      setBroadcastIncident({ ...inc, status: 'Seen' })
+    } else {
+      setBroadcastIncident(inc)
+    }
   }
 
   // AI generate for broadcast modal
-  const handleBroadcastGenerateAI = async (lang: 'English' | 'Tagalog') => {
+  const handleBroadcastGenerateAI = async (lang: 'English' | 'Tagalog' | 'Taglish') => {
     if (!broadcastIncident) return
     if (!isGeminiConfigured()) {
       setBroadcastAiError('Gemini API key not configured. Add VITE_GEMINI_API_KEY to your .env file.')
@@ -150,7 +155,9 @@ export default function IncomingCommunications() {
       }
       const text = lang === 'English'
         ? await generateEnglishAlert(ctx)
-        : await generateTagalogAlert(ctx)
+        : lang === 'Tagalog'
+        ? await generateTagalogAlert(ctx)
+        : await generateTaglishAlert(ctx)
       setBroadcastAiMessage(text)
     } catch (err) {
       setBroadcastAiError(err instanceof Error ? err.message : 'Failed to generate alert')
@@ -679,6 +686,18 @@ export default function IncomingCommunications() {
                         ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                         : <Sparkles className="w-3.5 h-3.5" />}
                       🇵🇭 Tagalog
+                    </Button>
+                    <Button
+                      variant={broadcastLang === 'Taglish' ? 'default' : 'outline'}
+                      size="sm"
+                      disabled={broadcastGenerating}
+                      onClick={() => handleBroadcastGenerateAI('Taglish')}
+                      className="gap-2 text-xs"
+                    >
+                      {broadcastGenerating && broadcastLang === 'Taglish'
+                        ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        : <Sparkles className="w-3.5 h-3.5" />}
+                      🇵🇭🇺🇸 Taglish
                     </Button>
                   </div>
 

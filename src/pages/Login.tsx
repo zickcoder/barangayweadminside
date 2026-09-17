@@ -58,7 +58,7 @@ export default function Login() {
   const [successMsg, setSuccessMsg] = useState('')
   const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null)
 
-  // OTP 5-minute expiry timer
+  // OTP 1:30-minute expiry timer
   const [otpExpiry, setOtpExpiry] = useState<number | null>(null)
   const [otpTimeLeftStr, setOtpTimeLeftStr] = useState('')
 
@@ -76,7 +76,7 @@ export default function Login() {
         setOtpCode('')
         setOtpAttempts(0)
         setSuccessMsg('')
-        setErrorMsg('OTP code expired. Please log in again.')
+        setErrorMsg('OTP code expired (1:30 min limit). Please log in again.')
         return
       }
       const totalSec = Math.floor(remaining / 1000)
@@ -118,7 +118,7 @@ export default function Login() {
       const authCheck = await validateCredentials(email, password)
       if (authCheck.success) {
         const otpResult = await sendOtpCode(email)
-        setOtpExpiry(Date.now() + 5 * 60 * 1000) // start 5-min OTP timer
+        setOtpExpiry(Date.now() + 90 * 1000) // start 1:30-min (90s) OTP timer
         if (otpResult.error) {
           setSuccessMsg(`OTP screen ready. Note: ${otpResult.error}`)
         } else {
@@ -388,8 +388,8 @@ export default function Login() {
                   </p>
                   {otpTimeLeftStr && (
                     <span className={`flex items-center gap-1 font-mono font-bold text-[11px] px-2 py-0.5 rounded-full border ${
-                      otpTimeLeftStr <= '01:00'
-                        ? 'text-destructive border-destructive/40 bg-destructive/10'
+                      otpTimeLeftStr <= '00:20'
+                        ? 'text-destructive border-destructive/40 bg-destructive/10 animate-pulse'
                         : 'text-amber-500 border-amber-500/40 bg-amber-500/10'
                     }`}>
                       ⏱️ {otpTimeLeftStr}

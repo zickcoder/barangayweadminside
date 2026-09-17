@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { AlertPriorityBadge } from '@/components/shared/StatusBadge'
 import { useBroadcastAlert } from '@/hooks/useAlerts'
-import { generateEnglishAlert, generateTagalogAlert, isGeminiConfigured } from '@/services/aiService'
+import { generateEnglishAlert, generateTagalogAlert, generateTaglishAlert, isGeminiConfigured } from '@/services/aiService'
 import { updateIncidentStatus } from '@/services/incidentApi'
 import type { BroadcastFormData, IncomingIncident } from '@/types'
 
@@ -26,7 +26,7 @@ const schema = z.object({
   location: z.string().optional(),
   priority: z.enum(['WARNING', 'EMERGENCY']),
   emergency_type: z.enum(['FIRE', 'FLOOD', 'CRIME', 'MEDICAL', 'EARTHQUAKE', 'OTHER']),
-  language: z.enum(['English', 'Tagalog']),
+  language: z.enum(['English', 'Tagalog', 'Taglish']),
   channel: z.literal('Mobile Application'),
   operator: z.string().min(1, 'Operator name is required'),
 })
@@ -46,7 +46,7 @@ export default function BroadcastAlerts() {
 
   // AI & Right panel state
   const [generatingAi, setGeneratingAi] = useState(false)
-  const [selectedLanguage, setSelectedLanguage] = useState<'English' | 'Tagalog' | null>(null)
+  const [selectedLanguage, setSelectedLanguage] = useState<'English' | 'Tagalog' | 'Taglish' | null>(null)
   const [aiError, setAiError] = useState('')
   const [panelVisible, setPanelVisible] = useState(!!prefillIncident)
 
@@ -116,7 +116,7 @@ export default function BroadcastAlerts() {
     }
   }
 
-  const handleGenerateAi = async (lang: 'English' | 'Tagalog') => {
+  const handleGenerateAi = async (lang: 'English' | 'Tagalog' | 'Taglish') => {
     if (!isGeminiConfigured()) {
       setAiError('Gemini API key is not configured. Add VITE_GEMINI_API_KEY to your .env file.')
       return
@@ -130,9 +130,14 @@ export default function BroadcastAlerts() {
     setGeneratingAi(true)
     setSelectedLanguage(lang)
     try {
-      const text = lang === 'English'
-        ? await generateEnglishAlert(ctx)
-        : await generateTagalogAlert(ctx)
+      let text = ''
+      if (lang === 'English') {
+        text = await generateEnglishAlert(ctx)
+      } else if (lang === 'Tagalog') {
+        text = await generateTagalogAlert(ctx)
+      } else {
+        text = await generateTaglishAlert(ctx)
+      }
       setValue('language', lang)
       setValue('description', text)
     } catch (err) {
@@ -324,6 +329,21 @@ export default function BroadcastAlerts() {
                         <Wand2 className="w-3 h-3 text-primary" />
                       )}
                       Tagalog
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={generatingAi || (!defaultDescription && !watchedValues.description?.trim())}
+                      onClick={() => handleGenerateAi('Taglish')}
+                      className="h-7 px-2.5 text-[11px] font-medium gap-1 hover:border-primary/50 hover:bg-primary/5"
+                    >
+                      {generatingAi && selectedLanguage === 'Taglish' ? (
+                        <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                      ) : (
+                        <Wand2 className="w-3 h-3 text-primary" />
+                      )}
+                      Taglish
                     </Button>
                   </div>
                 </div>

@@ -104,8 +104,8 @@
     --accent-foreground: 25 68% 10%;
     --destructive: 6 63% 46%;
     --destructive-foreground: 0 0% 100%;
-    --border: 124 27% 89%;
-    --input: 124 27% 89%;
+    --border: 124 16% 78%;
+    --input: 124 16% 78%;
     --ring: 136 50% 36%;
     --radius: 0.75rem;
     --font-display: 'Manrope', sans-serif;
@@ -113,7 +113,7 @@
 
     /* Custom semantic tokens */
     --sidebar-bg: 0 0% 100%;
-    --sidebar-border: 124 27% 89%;
+    --sidebar-border: 124 16% 78%;
     --sidebar-active: 136 50% 36%;
     --sidebar-hover: 130 40% 96%;
 
@@ -428,4 +428,50 @@
 
 .nav-enter {
   animation: slide-in-left 0.3s ease-out;
+}
+
+/* ─── Print & PDF Export Styles ─────────────────────────────────────────── */
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 10mm 12mm 10mm;
+  }
+
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  header,
+  aside,
+  nav,
+  .no-print {
+    display: none !important;
+  }
+
+  #printable-analytics-report {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  #printable-analytics-report * {
+    color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+
+  tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
 }

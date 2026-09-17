@@ -25,9 +25,32 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
   const { theme, toggleTheme } = useTheme()
   const { data: incidents = [] } = useIncidents()
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [lastClearedTime, setLastClearedTime] = useState<number>(() => {
+    return Number(localStorage.getItem('bell_last_cleared_time') || 0)
+  })
 
   const pendingIncidents = incidents.filter(i => i.status === 'Pending')
-  const pendingCount = pendingIncidents.length
+  // Badge only counts pending incidents newer than when the user last clicked the bell
+  const unreadBadgeCount = incidents.filter(
+    i => i.status === 'Pending' && new Date(i.created_at).getTime() > lastClearedTime
+  ).length
+
+  const handleBellClick = () => {
+    const nextOpen = !dropdownOpen
+    setDropdownOpen(nextOpen)
+    if (!dropdownOpen) {
+      // User opened the notification panel: clear badge immediately!
+      const now = Date.now()
+      localStorage.setItem('bell_last_cleared_time', String(now))
+      setLastClearedTime(now)
+    }
+  }
+
+  const handleClearBadgeManually = () => {
+    const now = Date.now()
+    localStorage.setItem('bell_last_cleared_time', String(now))
+    setLastClearedTime(now)
+  }
 
   const routeInfo = ROUTE_TITLES[pathname] ?? {
     title: 'Barangay 178 ECS',
@@ -76,13 +99,13 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
             variant="ghost"
             size="icon"
             className="relative"
-            onClick={() => setDropdownOpen(!dropdownOpen)}
+            onClick={handleBellClick}
             title="Pending Incidents"
           >
             <Bell className="w-4 h-4" />
-            {pendingCount > 0 && (
+            {unreadBadgeCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-destructive text-destructive-foreground text-[9px] font-bold rounded-full flex items-center justify-center animate-pulse">
-                {pendingCount > 9 ? '9+' : pendingCount}
+                {unreadBadgeCount > 9 ? '9+' : unreadBadgeCount}
               </span>
             )}
           </Button>
@@ -96,9 +119,17 @@ export function Header({ onOpenMobileMenu }: HeaderProps) {
               <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] max-w-xs sm:w-80 bg-card border border-border rounded-xl shadow-xl z-50 py-2 animate-fade-in">
                 <div className="px-4 py-2 border-b border-border flex justify-between items-center bg-muted/20">
                   <span className="text-xs font-bold text-foreground font-display">Pending Incident Reviews</span>
-                  <span className="text-[10px] font-semibold bg-destructive/15 text-destructive px-2 py-0.5 rounded-full">
-                    {pendingCount} new
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-semibold bg-destructive/15 text-destructive px-2 py-0.5 rounded-full">
+                      {pendingIncidents.length} total
+                    </span>
+                    <button
+                      onClick={handleClearBadgeManually}
+                      className="text-[10px] text-primary hover:underline cursor-pointer font-medium"
+                    >
+                      Clear Badge
+                    </button>
+                  </div>
                 </div>
                 
                 <div className="max-h-64 overflow-y-auto divide-y divide-border">
